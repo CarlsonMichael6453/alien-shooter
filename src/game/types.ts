@@ -1,0 +1,99 @@
+export type Mode = 'ready' | 'playing' | 'over';
+
+export type EnemyKind = 'alien' | 'asteroid';
+
+export type EnemyShape = 'saucer' | 'dart' | 'rock';
+
+export interface Enemy {
+  id: number;
+  kind: EnemyKind;
+  shape: EnemyShape;
+  x: number;
+  y: number;
+  baseX: number;
+  vx: number;
+  vy: number;
+  r: number;
+  rot: number;
+  rotSpeed: number;
+  phase: number;
+  wobbleAmp: number;
+  wobbleFreq: number;
+  tint: number;
+  score: number;
+}
+
+export interface Bullet {
+  id: number;
+  x: number;
+  y: number;
+  vy: number;
+  r: number;
+}
+
+export interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  r: number;
+  color: string;
+}
+
+export interface Star {
+  /** Horizontal position as a fraction of the playfield width. */
+  x: number;
+  /** Vertical position as a fraction of the playfield height. */
+  y: number;
+  /** Fraction of the screen height traveled per second. */
+  speed: number;
+  size: number;
+  alpha: number;
+  warm: boolean;
+}
+
+export interface GameState {
+  mode: Mode;
+  width: number;
+  height: number;
+  time: number;
+  score: number;
+  best: number;
+  lives: number;
+  shipX: number;
+  shipY: number;
+  firing: boolean;
+  invuln: number;
+  hitFlash: number;
+  shake: number;
+  muzzle: number;
+  fireCooldown: number;
+  spawnCooldown: number;
+  shotsFired: number;
+  /** Seconds spent on the game-over card. Restarts are ignored until this passes a short lock. */
+  overTimer: number;
+  nextId: number;
+  bullets: Bullet[];
+  enemies: Enemy[];
+  particles: Particle[];
+  stars: Star[];
+  rng: Rng;
+}
+
+export interface Rng {
+  next(): number;
+}
+
+/** What the simulation should do this frame. Pointer math lives outside the sim. */
+export interface Intent {
+  moveActive: boolean;
+  targetX: number;
+  targetY: number;
+  firing: boolean;
+  keyX: number;
+  keyY: number;
+  start: boolean;
+  restart: boolean;
+}

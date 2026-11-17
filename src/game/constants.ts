@@ -1,0 +1,10 @@
+export const START_LIVES = 3;
+export const SHIP_MARGIN = 28;
+export const SHIP_HIT_RADIUS = 14;
+export const BULLET_RADIUS = 6;
+export const BULLET_SPEED = 780;
+export const FIRE_INTERVAL = 0.12;
+export const KEYBOARD_SPEED = 340;
+export const INVULN_TIME = 1.5;
+export const MAX_PARTICLES = 140;
+export const MAX_BULLETS = 48;

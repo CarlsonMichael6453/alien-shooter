@@ -1,0 +1,211 @@
+/**
+ * Mobile-web multitouch check.
+ * Serves dist/ at /alien-shooter/ and drives two real touch points in Chrome.
+ *
+ *   npx expo export --platform web && node scripts/patch-web-export.js
+ *   node scripts/multitouch-check.mjs
+ */
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { chromium, devices } = require('playwright-core');
+
+const root = path.resolve('dist');
+const prefix = '/alien-shooter';
+const port = 4173;
+
+function startServer() {
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+    '.wasm': 'application/wasm',
+  };
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    let pathname = decodeURIComponent(url.pathname);
+    if (pathname === prefix) {
+      res.writeHead(302, { Location: `${prefix}/` });
+      res.end();
+      return;
+    }
+    if (!pathname.startsWith(`${prefix}/`)) {
+      res.writeHead(404);
+      res.end('missing');
+      return;
+    }
+    let relative = pathname.slice(prefix.length);
+    if (relative === '' || relative === '/') relative = '/index.html';
+    const file = path.normalize(path.join(root, relative));
+    if (!file.startsWith(root)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    fs.readFile(file, (error, data) => {
+      if (error) {
+        res.writeHead(404);
+        res.end('missing');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': types[path.extname(file)] || 'application/octet-stream',
+        'Cache-Control': 'no-store',
+      });
+      res.end(data);
+    });
+  });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+async function touch(client, type, points) {
+  await client.send('Input.dispatchTouchEvent', {
+    type,
+    modifiers: 0,
+    touchPoints: points.map((point) => ({
+      x: point.x,
+      y: point.y,
+      id: point.id,
+      radiusX: 2,
+      radiusY: 2,
+      force: 0.8,
+    })),
+  });
+}
+
+async function main() {
+  const server = await startServer();
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const context = await browser.newContext({ ...devices['iPhone 13'] });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+
+  try {
+    await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__ALIEN__ && window.__ALIEN__.snapshot().width > 0);
+    await page.waitForTimeout(150);
+
+    const gesture = await page.evaluate(() => {
+      const html = getComputedStyle(document.documentElement);
+      const body = getComputedStyle(document.body);
+      const viewport = document.querySelector('meta[name="viewport"]')?.getAttribute('content') || '';
+      return {
+        htmlTouch: html.touchAction,
+        bodyTouch: body.touchAction,
+        overflow: html.overflow,
+        viewport,
+      };
+    });
+    assert(gesture.htmlTouch === 'none', `html touch-action is ${gesture.htmlTouch}`);
+    assert(gesture.bodyTouch === 'none', `body touch-action is ${gesture.bodyTouch}`);
+    assert(gesture.overflow === 'hidden', `html overflow is ${gesture.overflow}`);
+    assert(gesture.viewport.includes('user-scalable=no'), `viewport is ${gesture.viewport}`);
+    assert(gesture.viewport.includes('viewport-fit=cover'), 'viewport is missing viewport-fit=cover');
+
+    const client = await context.newCDPSession(page);
+    const snap = () => page.evaluate(() => window.__ALIEN__.snapshot());
+
+    const before = await snap();
+    assert(before.mode === 'ready', `expected ready, got ${before.mode}`);
+    assert(before.shotsFired === 0, 'title screen should not be firing');
+
+    // One finger steers and must not fire.
+    await touch(client, 'touchStart', [{ id: 1, x: 180, y: 640 }]);
+    await touch(client, 'touchMove', [{ id: 1, x: 180, y: 520 }]);
+    await page.waitForTimeout(280);
+    const steered = await snap();
+    assert(steered.mode === 'playing', 'first touch should start the game');
+    assert(steered.moveId === 1, `move finger was ${steered.moveId}`);
+    assert(steered.fireId == null, 'one finger should not claim fire');
+    assert(steered.firing === false, 'one finger should not fire');
+    assert(steered.shotsFired === 0, `shots fired with one finger: ${steered.shotsFired}`);
+    assert(steered.shipY < before.shipY - 40, `ship did not follow the upward drag (${before.shipY} -> ${steered.shipY})`);
+
+    await page.evaluate(() => {
+      document.addEventListener(
+        'touchmove',
+        (event) => {
+          window.__lastDefaultPrevented = event.defaultPrevented;
+        },
+        true,
+      );
+    });
+
+    // Second finger, held, fires. Moving it must not steer.
+    const parked = await snap();
+    await touch(client, 'touchStart', [{ id: 2, x: 70, y: 700 }]);
+    await touch(client, 'touchMove', [
+      { id: 1, x: 180, y: 520 },
+      { id: 2, x: 140, y: 640 },
+    ]);
+    await page.waitForTimeout(420);
+    const firing = await snap();
+    assert(firing.moveId === 1 && firing.fireId === 2, `roles were move=${firing.moveId} fire=${firing.fireId}`);
+    assert(firing.firing === true, 'second finger should fire');
+    assert(firing.shotsFired >= 2, `expected a steady stream, got ${firing.shotsFired} shots`);
+    assert(Math.abs(firing.shipX - parked.shipX) < 8, 'dragging the fire finger moved the ship');
+    assert(Math.abs(firing.shipY - parked.shipY) < 8, 'dragging the fire finger moved the ship vertically');
+    assert(await page.evaluate(() => window.scrollY === 0), 'the page scrolled during a two-finger drag');
+
+    const preventedFlag = await page.evaluate(() => window.__lastDefaultPrevented === true);
+    assert(preventedFlag, 'touchmove was not preventDefaulted, so the browser can still scroll or zoom');
+
+    // Lift the move finger. The remaining finger keeps firing and does not start steering.
+    await touch(client, 'touchEnd', [{ id: 1, x: 180, y: 520 }]);
+    const shotsAtLift = (await snap()).shotsFired;
+    await touch(client, 'touchMove', [{ id: 2, x: 40, y: 500 }]);
+    await page.waitForTimeout(300);
+    const stillFiring = await snap();
+    assert(stillFiring.moveId == null, 'lifting the move finger reassigned the fire finger');
+    assert(stillFiring.fireId === 2, 'fire finger was lost');
+    assert(stillFiring.shotsFired > shotsAtLift, 'firing stopped while the second finger was still down');
+    assert(Math.abs(stillFiring.shipX - firing.shipX) < 8, 'the fire finger started steering after the other finger lifted');
+
+    // A new finger takes over steering while the original fire finger stays put.
+    await touch(client, 'touchStart', [{ id: 3, x: 200, y: 600 }]);
+    await touch(client, 'touchMove', [
+      { id: 2, x: 40, y: 500 },
+      { id: 3, x: 250, y: 560 },
+    ]);
+    await page.waitForTimeout(80);
+    const swapped = await snap();
+    assert(swapped.moveId === 3, `new finger did not steer (move=${swapped.moveId})`);
+    assert(swapped.fireId === 2, `original fire finger changed to ${swapped.fireId}`);
+    assert(swapped.shipX > stillFiring.shipX + 20, 'the new move finger did not drag the ship');
+
+    await touch(client, 'touchEnd', [
+      { id: 2, x: 40, y: 500 },
+      { id: 3, x: 250, y: 560 },
+    ]);
+    await page.waitForTimeout(200);
+    const released = await snap();
+    const shotsWhenQuiet = released.shotsFired;
+    await page.waitForTimeout(320);
+    const quiet = await snap();
+    assert(quiet.firing === false, 'firing stayed on after both fingers lifted');
+    assert(quiet.shotsFired === shotsWhenQuiet, 'shots kept coming after release');
+
+    await page.screenshot({ path: '/tmp/alien-playing.png' });
+    console.log(JSON.stringify({ ok: true, gesture, quiet }, null, 2));
+  } finally {
+    if (errors.length) console.error('PAGE ERRORS\n' + errors.join('\n'));
+    await browser.close();
+    server.close();
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
