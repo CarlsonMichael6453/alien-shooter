@@ -1,5 +1,5 @@
 export const START_LIVES = 3;
-export const START_AMMO = 20;
+export const START_AMMO = 100;
 export const SHIP_MARGIN = 28;
 export const SHIP_HIT_RADIUS = 14;
 export const BULLET_RADIUS = 6;
@@ -19,14 +19,13 @@ export const RAPID_RATE = 4;
 export const RAPID_CONE = (30 * Math.PI) / 180;
 
 export const LASER_DURATION = 8;
-export const LASER_DPS = 3;
+export const LASER_DPS = 30;
 export const LASER_AIM_DEADZONE = 22;
 
 export const BOMB_FUSE = 3;
 export const BOMB_SPEED = 88;
-export const BOMB_DAMAGE = 15;
+export const BOMB_DAMAGE = 200;
 export const BOMB_BLAST_TIME = 0.55;
 
-/** Share of ammo boxes that contain 10 rounds. The next slice, up to AMMO_WEIGHT_MID, contains 20. The rest contain 40. */
-export const AMMO_WEIGHT_SMALL = 0.6;
-export const AMMO_WEIGHT_MID = 0.9;
+export const AMMO_WEIGHT_50 = 0.6;
+export const AMMO_WEIGHT_100 = 0.9;

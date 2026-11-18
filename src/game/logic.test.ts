@@ -200,7 +200,7 @@ describe('simulation', () => {
     state.pickups.push({
       id: 4,
       kind: 'ammo',
-      amount: 40,
+      amount: 200,
       x: state.shipX,
       y: state.shipY,
       vy: 0,
@@ -208,17 +208,17 @@ describe('simulation', () => {
       spin: 0,
     });
     step(state, idleIntent(), 0.016);
-    assert.equal(state.ammo, 50);
+    assert.equal(state.ammo, 210);
     assert.equal(state.pickups.length, 0);
   });
 
-  it('drops 10 most often and 40 least often', () => {
+  it('drops 50 most often and 200 least often', () => {
     const rng = createRng(4);
-    const counts = { 10: 0, 20: 0, 40: 0 };
+    const counts = { 50: 0, 100: 0, 200: 0 };
     for (let i = 0; i < 1000; i += 1) counts[rollAmmoAmount(rng)] += 1;
-    assert.ok(counts[10] > counts[20]);
-    assert.ok(counts[20] > counts[40]);
-    assert.ok(counts[40] > 40);
+    assert.ok(counts[50] > counts[100]);
+    assert.ok(counts[100] > counts[200]);
+    assert.ok(counts[200] > 40);
   });
 
   it('sprays rapid fire inside a 30 degree cone without spending ammo', () => {
@@ -243,7 +243,7 @@ describe('simulation', () => {
   it('arms a bomb from the button and damages only enemies inside the blast', () => {
     const state = playing();
     state.inventory = ['bomb'];
-    state.enemies.push(makeEnemy({ id: 1, x: state.shipX, y: state.shipY - 140, r: 16, hp: 15, maxHp: 15, score: 150, vy: 0 }));
+    state.enemies.push(makeEnemy({ id: 1, x: state.shipX, y: state.shipY - 140, r: 16, hp: 15, maxHp: 15, score: 200, vy: 0 }));
     state.enemies.push(makeEnemy({ id: 2, x: 20, y: 30, r: 10, hp: 5, maxHp: 5, score: 50, vy: 0 }));
     step(state, idleIntent({ activateSlot: 0 }), 0.016);
     assert.deepEqual(state.inventory, []);
@@ -252,7 +252,7 @@ describe('simulation', () => {
     for (let i = 0; i < 70; i += 1) step(state, idleIntent(), 0.05);
     assert.equal(state.bomb, null);
     assert.equal(state.enemies.find((enemy) => enemy.id === 1), undefined);
-    assert.equal(state.score, 150);
+    assert.equal(state.score, 200);
     assert.equal(state.enemies.find((enemy) => enemy.id === 2)?.hp, farHp);
     assert.ok(Math.abs(halfScreenRadius(state.width, state.height) ** 2 * Math.PI - state.width * state.height / 2) < 1);
   });

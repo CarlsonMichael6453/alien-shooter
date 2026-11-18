@@ -1,6 +1,6 @@
 import {
-  AMMO_WEIGHT_MID,
-  AMMO_WEIGHT_SMALL,
+  AMMO_WEIGHT_100,
+  AMMO_WEIGHT_50,
   BOMB_BLAST_TIME,
   BOMB_DAMAGE,
   BOMB_FUSE,
@@ -75,11 +75,11 @@ export function halfScreenRadius(width: number, height: number): number {
   return Math.sqrt((width * height) / (2 * Math.PI));
 }
 
-export function rollAmmoAmount(rng: Rng): 10 | 20 | 40 {
+export function rollAmmoAmount(rng: Rng): 50 | 100 | 200 {
   const roll = rng.next();
-  if (roll < AMMO_WEIGHT_SMALL) return 10;
-  if (roll < AMMO_WEIGHT_MID) return 20;
-  return 40;
+  if (roll < AMMO_WEIGHT_50) return 50;
+  if (roll < AMMO_WEIGHT_100) return 100;
+  return 200;
 }
 
 export function createGame(
@@ -467,7 +467,7 @@ function spawnEnemies(state: GameState, dt: number): void {
     wobbleAmp: wobble,
     wobbleFreq: 1.1 + state.rng.next() * 1.1,
     tint: state.rng.next(),
-    score: tier * 10,
+    score: tier === 15 ? 200 : tier === 10 ? 100 : 50,
     hp: tier,
     maxHp: tier,
   });

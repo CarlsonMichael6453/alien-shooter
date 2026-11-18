@@ -11,13 +11,13 @@ That link goes live after this branch is merged to `main` and the Pages workflow
 - Put one finger down and drag. The ship follows the drag from wherever the touch starts, so your thumb does not sit on top of the ship.
 - Put a second finger down anywhere and hold it. The ship fires straight up until you lift that finger.
 - Either finger can land first. The first touch steers and the second touch fires. Lifting the steering finger does not turn the firing finger into a steering finger.
-- You start with 20 rounds. Each bullet spends one and removes one health. Ammo boxes marked 10, 20, and 40 drift down; fly into them to reload. The 10 box is the common one and the 40 box is rare.
-- Scouts have 5 health, saucers 10, and big gold cruisers 15. A bar over each ship shows what is left. Tougher ships show up less often.
+- You start with 100 rounds. Each bullet spends one. Ammo boxes marked 50, 100, and 200 drift down; fly into them to reload. The 50 box is the common one and the 200 box is rare.
+- Scouts have 5 health, saucers 10, and big gold cruisers 15. A bullet does 1 damage, and a bar over each ship shows what is left. Tougher ships show up less often.
 - Power-ups are not used the moment you touch them. Their icons line up at the bottom left, up to three at a time, including duplicates. A fourth pickup stays in space until a slot is free. Lift the firing finger and tap an icon (or press 1, 2, or 3). Only one power-up runs at a time; the others dim until it ends.
-- Rapid fire lasts 5 seconds, shoots four times as fast inside a 30° cone, and does not spend ammo. The bomb drifts forward, ticks once a second for 3 seconds, then bursts across about half the screen and destroys every ship it reaches. The laser lasts 8 seconds, does not spend ammo, deals 3 damage per second, and aims with the firing finger.
+- Rapid fire lasts 5 seconds, shoots four times as fast inside a 30° cone, and does not spend ammo. The bomb drifts forward, ticks once a second for 3 seconds, then bursts across about half the screen. The laser lasts 8 seconds, does not spend ammo, and aims with the firing finger.
 - If a ship hits you, you lose a life. Three lives, then tap to play again.
 
-On a computer: drag or use WASD / arrows to move, hold Space to fire, and press 1, 2, or 3 to use a stored power-up. While the laser is active, point the mouse to aim it.
+On a computer: drag or use WASD / arrows to move, hold Space to fire, and press B or click the bomb button. While the laser is active, point the mouse to aim it.
 
 ## Run it on the web
 
