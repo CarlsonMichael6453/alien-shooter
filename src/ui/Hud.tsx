@@ -110,9 +110,13 @@ function PowerGlyph({ kind }: { kind: PowerKind }) {
   if (kind === 'bomb') {
     return (
       <View style={styles.glyph}>
-        <View style={styles.cap} />
-        <View style={styles.stem} />
-        <View style={styles.puff} />
+        <View style={styles.stemShade} />
+        <View style={styles.stemHot} />
+        <View style={styles.lobeL} />
+        <View style={styles.lobeR} />
+        <View style={styles.lobeC} />
+        <View style={styles.lobeHot} />
+        <View style={styles.ash} />
       </View>
     );
   }
@@ -238,30 +242,64 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4FEFF',
     top: 2,
   },
-  cap: {
-    position: 'absolute',
-    top: 2,
-    width: 20,
-    height: 12,
-    borderRadius: 10,
-    backgroundColor: '#FF8A3D',
-  },
-  stem: {
+  stemShade: {
     position: 'absolute',
     top: 12,
-    width: 5,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: '#F4E2C4',
+    width: 8,
+    height: 13,
+    borderRadius: 3,
+    backgroundColor: '#4A342C',
   },
-  puff: {
+  stemHot: {
     position: 'absolute',
-    top: 0,
+    top: 13,
+    width: 3,
+    height: 11,
+    borderRadius: 2,
+    backgroundColor: '#E25820',
+  },
+  lobeL: {
+    position: 'absolute',
+    top: 6,
+    left: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#6A3424',
+  },
+  lobeR: {
+    position: 'absolute',
+    top: 7,
     right: 2,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#8A3A22',
+  },
+  lobeC: {
+    position: 'absolute',
+    top: 2,
+    width: 14,
+    height: 12,
+    borderRadius: 7,
+    backgroundColor: '#D04A1C',
+  },
+  lobeHot: {
+    position: 'absolute',
+    top: 3,
     width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#FFF6D8',
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#FFE0A4',
+  },
+  ash: {
+    position: 'absolute',
+    top: 5,
+    left: 1,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2A1C18',
   },
   beam: {
     width: 7,

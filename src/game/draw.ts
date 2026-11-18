@@ -46,7 +46,7 @@ export function paintGame(painter: Painter, state: GameState): void {
 
   if (state.bomb) drawBomb(painter, state.bomb);
   if (state.laserTimer > 0) drawLaser(painter, state);
-  if (state.blast && state.blast.age <= 0.7) drawBlast(painter, state.blast);
+  if (state.blast && state.blast.age <= 1.7) drawBlast(painter, state.blast);
 
   for (const bullet of state.bullets) drawBullet(painter, bullet);
 
@@ -251,12 +251,9 @@ function drawRapidIcon(painter: Painter): void {
 }
 
 function drawMushroomIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#2A160C');
-  painter.strokeCircle(0, 0, 20, '#FFB020', 2);
-  painter.fillRoundRect(-3, -2, 6, 12, 2, '#F4E2C4');
-  painter.fillEllipse(0, -4, 12, 8, '#FF8A3D');
-  painter.fillEllipse(-4, -7, 4, 3, '#FFE0A8');
-  painter.fillCircle(6, -8, 3.5, 'rgba(255,255,255,0.85)');
+  painter.fillCircle(0, 0, 20, '#140E0C');
+  painter.strokeCircle(0, 0, 20, '#A84820', 1.5);
+  drawMushroomCloud(painter, 1, 0);
 }
 
 function drawLaserIcon(painter: Painter): void {
@@ -278,45 +275,140 @@ function drawBomb(painter: Painter, bomb: { x: number; y: number; age: number; p
   painter.restore();
 }
 
+function drawMushroomCloud(painter: Painter, scale: number, time: number): void {
+  const sway = Math.sin(time * 6) * 0.6 * scale;
+  painter.fillPolygon(
+    [
+      [-2.4 * scale, 9 * scale],
+      [2.2 * scale, 9 * scale],
+      [4.4 * scale + sway, -1 * scale],
+      [-4.6 * scale + sway, -1 * scale],
+    ],
+    '#4A382F',
+  );
+  painter.fillPolygon(
+    [
+      [-1.1 * scale, 8 * scale],
+      [1.2 * scale, 8 * scale],
+      [1.8 * scale + sway * 0.4, 0],
+      [-1.5 * scale + sway * 0.4, 0],
+    ],
+    '#E26A28',
+  );
+  painter.fillEllipse(sway, -1.5 * scale, 10.5 * scale, 3.6 * scale, '#3A241C');
+  painter.fillCircle(-6.2 * scale + sway, -4.2 * scale, 5 * scale, '#5C3428');
+  painter.fillCircle(6.4 * scale + sway, -3.6 * scale, 4.8 * scale, '#7A3A2A');
+  painter.fillCircle(sway * 0.3, -7.2 * scale, 6 * scale, '#C44A22');
+  painter.fillCircle(-3.2 * scale + sway, -8.4 * scale, 3.8 * scale, '#E07030');
+  painter.fillCircle(3 * scale + sway, -9 * scale, 3.1 * scale, '#F09A48');
+  painter.fillEllipse(sway * 0.2, -7 * scale, 2.8 * scale, 1.8 * scale, '#FFE4B0');
+  painter.fillCircle(-8 * scale + sway, -6 * scale, 2.1 * scale, 'rgba(28,22,20,0.9)');
+  painter.fillCircle(8.2 * scale + sway, -5.2 * scale, 1.8 * scale, 'rgba(46,32,28,0.85)');
+}
+
 function drawBlast(
   painter: Painter,
   blast: { x: number; y: number; age: number; maxRadius: number },
 ): void {
-  const t = clamp01(blast.age / 0.55);
-  const radius = blast.maxRadius * (1 - (1 - t) * (1 - t));
-  const fade = clamp01(1 - Math.max(0, blast.age - 0.35) / 0.3);
-  painter.fillCircle(blast.x, blast.y, radius, rgba('#FF6A1A', 0.28 * fade));
-  painter.fillCircle(blast.x, blast.y, radius * 0.62, rgba('#FFD36A', 0.45 * fade));
-  painter.fillCircle(blast.x, blast.y, radius * 0.28, rgba('#FFF6D8', 0.7 * fade));
-  painter.strokeCircle(blast.x, blast.y, Math.max(2, radius), rgba('#FFE7B0', 0.8 * fade), 3);
+  const age = blast.age;
+  const grow = clamp01(age / 0.5);
+  const radius = blast.maxRadius * (1 - (1 - grow) * (1 - grow));
+  const fade = clamp01(1 - Math.max(0, age - 0.4) / 1.15);
+  const flash = clamp01(1 - age / 0.11);
+  const ring = blast.maxRadius * Math.min(1.05, age / 0.38);
+
+  painter.strokeCircle(blast.x, blast.y, Math.max(4, ring), rgba('#FFF0D2', 0.7 * clamp01(1 - age / 0.62)), 3.5);
+  painter.strokeCircle(blast.x, blast.y, Math.max(2, ring * 0.86), rgba('#FFB060', 0.35 * clamp01(1 - age / 0.5)), 8);
+
+  for (let i = 0; i < 9; i += 1) {
+    const angle = (i / 9) * Math.PI * 2 + age * 0.8;
+    const wobble = 0.7 + Math.sin(age * 11 + i * 1.7) * 0.22;
+    const reach = radius * (0.62 + (i % 3) * 0.08);
+    painter.fillCircle(
+      blast.x + Math.cos(angle) * reach,
+      blast.y + Math.sin(angle) * reach * 0.92,
+      radius * (0.28 + (i % 2) * 0.08) * wobble,
+      rgba(i % 2 === 0 ? '#241816' : '#5A301C', 0.55 * fade),
+    );
+  }
+
+  painter.fillCircle(blast.x, blast.y, radius * 0.9, rgba('#B43210', 0.4 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.58, rgba('#FF6A18', 0.5 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.32, rgba('#FFC56A', 0.62 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.14, rgba('#FFF8E8', 0.8 * fade));
+  if (flash > 0) painter.fillCircle(blast.x, blast.y, radius * 0.45 + 24, rgba('#FFFFFF', 0.72 * flash));
+
+  if (age > 0.28) {
+    const rise = (age - 0.28) * 120;
+    painter.save();
+    painter.translate(blast.x, blast.y - radius * 0.15 - rise);
+    drawMushroomCloud(painter, Math.max(1.8, radius / 56), age);
+    painter.restore();
+  }
 }
 
 function drawLaser(painter: Painter, state: GameState): void {
   const nose = beamNose(state);
   const angle = state.laserAngle;
-  const length = 1500;
-  const flicker = 0.82 + Math.sin(state.time * 48) * 0.18;
+  const length = Math.max(state.width, state.height) * 1.4;
+  const flicker = 0.78 + Math.sin(state.time * 54) * 0.14 + Math.sin(state.time * 97) * 0.08;
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
   const px = -dy;
   const py = dx;
   const tipX = nose.x + dx * length;
   const tipY = nose.y + dy * length;
-  const band = (half: number, color: string) => {
+  const band = (half: number, color: string, pinch = 0.65) => {
     painter.fillPolygon(
       [
         [nose.x + px * half, nose.y + py * half],
         [nose.x - px * half, nose.y - py * half],
-        [tipX - px * half * 0.7, tipY - py * half * 0.7],
-        [tipX + px * half * 0.7, tipY + py * half * 0.7],
+        [tipX - px * half * pinch, tipY - py * half * pinch],
+        [tipX + px * half * pinch, tipY + py * half * pinch],
       ],
       color,
     );
   };
-  band(16 * flicker, 'rgba(255,70,20,0.28)');
-  band(9 * flicker, 'rgba(255,48,24,0.8)');
-  band(4 * flicker, '#FFD36A');
-  painter.fillCircle(nose.x, nose.y, 8 * flicker, '#FFF1C9');
+  const shimmer = Math.sin(state.time * 36) * 1.6;
+  band(15 * flicker, 'rgba(255,70,16,0.16)');
+  band(9 * flicker, 'rgba(255,52,18,0.55)');
+  painter.save();
+  painter.translate(px * shimmer, py * shimmer);
+  band(6.4 * flicker, 'rgba(255,90,24,0.78)', 0.55);
+  painter.restore();
+  band(3.1 * flicker, '#FFE7A8', 0.4);
+  band(1.35, '#FFFFFF', 0.28);
+
+  const steps = 9;
+  for (let i = 1; i <= steps; i += 1) {
+    const along = (i / steps) * Math.min(length, 460);
+    const wave = Math.sin(state.time * 22 + i * 1.4) * (2.4 + (i % 3));
+    const side = i % 2 === 0 ? 1 : -1;
+    const x = nose.x + dx * along + px * wave * side;
+    const y = nose.y + dy * along + py * wave * side;
+    painter.fillCircle(x, y, 2.4 + (i % 3) * 0.7, i % 2 === 0 ? 'rgba(255,120,30,0.75)' : 'rgba(255,220,140,0.55)');
+  }
+
+  painter.fillCircle(nose.x, nose.y, 16 * flicker, 'rgba(255,90,20,0.35)');
+  painter.fillCircle(nose.x, nose.y, 9 * flicker, 'rgba(255,190,90,0.8)');
+  painter.fillCircle(nose.x, nose.y, 4.2, '#FFFFFF');
+
+  for (const enemy of state.enemies) {
+    const distance = pointLineDistance(enemy.x, enemy.y, nose.x, nose.y, tipX, tipY);
+    if (distance > enemy.r + 10) continue;
+    const glow = 0.65 + Math.sin(state.time * 40 + enemy.id) * 0.35;
+    painter.fillCircle(enemy.x, enemy.y, enemy.r * 0.55, rgba('#2A120C', 0.45));
+    painter.fillCircle(enemy.x, enemy.y, 7 * glow, 'rgba(255,220,150,0.85)');
+    painter.fillCircle(enemy.x + px * 6, enemy.y + py * 6, 2.2, '#FFF8E8');
+  }
+}
+
+function pointLineDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = dx * dx + dy * dy;
+  const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len));
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
 }
 
 function drawEnemy(painter: Painter, enemy: Enemy): void {

@@ -114,6 +114,8 @@ export interface GameState {
   laserTimer: number;
   laserAngle: number;
   spark: number;
+  /** When true the simulation is frozen so a frame can be inspected. */
+  hold: boolean;
   nextId: number;
   bullets: Bullet[];
   enemies: Enemy[];

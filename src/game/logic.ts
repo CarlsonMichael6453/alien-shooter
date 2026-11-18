@@ -112,6 +112,7 @@ export function createGame(
     laserTimer: 0,
     laserAngle: -Math.PI / 2,
     spark: 0,
+    hold: false,
     nextId: 1,
     bullets: [],
     enemies: [],
@@ -192,6 +193,7 @@ export function resizeGame(state: GameState, width: number, height: number): voi
 }
 
 export function step(state: GameState, intent: Intent, dt: number): void {
+  if (state.hold) return;
   const frame = clamp(dt, 0, 0.05);
 
   if (state.mode === 'over') {
@@ -257,6 +259,7 @@ function restart(state: GameState): void {
   state.shotsFired = 0;
   state.overTimer = 0;
   state.spark = 0;
+  state.hold = false;
   state.bullets = [];
   state.enemies = [];
   state.pickups = [];
@@ -351,15 +354,30 @@ function detonate(state: GameState, bomb: Bomb): void {
     hit: [],
   };
   state.shake = 1;
-  state.hitFlash = 0.18;
-  burst(state, bomb.x, bomb.y, '#FFD36A', 18);
+  state.hitFlash = 0.28;
+  burst(state, bomb.x, bomb.y, '#FFF4D2', 10);
+  burst(state, bomb.x, bomb.y, '#FF7A1A', 12);
+  for (let i = 0; i < 10; i += 1) {
+    const angle = state.rng.next() * Math.PI * 2;
+    const speed = 40 + state.rng.next() * 160;
+    pushParticle(state, {
+      x: bomb.x,
+      y: bomb.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 30,
+      life: 0.45 + state.rng.next() * 0.45,
+      maxLife: 0.9,
+      r: 1.4 + state.rng.next() * 2.2,
+      color: state.rng.next() > 0.45 ? '#FFE08A' : '#FF5A1A',
+    });
+  }
 }
 
 function tickBlast(state: GameState, dt: number): void {
   const blast = state.blast;
   if (!blast) return;
   blast.age += dt;
-  if (blast.age > BOMB_BLAST_TIME + 0.15) state.blast = null;
+  if (blast.age > 1.65) state.blast = null;
 }
 
 function fire(state: GameState, intent: Intent, dt: number): void {
@@ -558,7 +576,21 @@ function collide(state: GameState, dt: number): void {
     for (const enemy of state.enemies) {
       if (deadEnemies.has(enemy.id)) continue;
       const distance = pointSegmentDistance(enemy.x, enemy.y, nose.x, nose.y, x2, y2);
-      if (distance <= enemy.r + 8) hurt(state, enemy, LASER_DPS * dt, deadEnemies, false);
+      if (distance <= enemy.r + 8) {
+        hurt(state, enemy, LASER_DPS * dt, deadEnemies, false);
+        if (state.rng.next() < 0.22) {
+          pushParticle(state, {
+            x: enemy.x,
+            y: enemy.y,
+            vx: (state.rng.next() - 0.5) * 90,
+            vy: (state.rng.next() - 0.5) * 90,
+            life: 0.16 + state.rng.next() * 0.14,
+            maxLife: 0.3,
+            r: 1.2 + state.rng.next() * 1.6,
+            color: state.rng.next() > 0.5 ? '#FFF6E4' : '#FF9A3A',
+          });
+        }
+      }
     }
   }
 
