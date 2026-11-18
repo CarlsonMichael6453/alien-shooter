@@ -12,13 +12,40 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controls } from '../game/controls';
-import { createGame, inventorySlots, resizeGame, step } from '../game/logic';
+import { createGame, resizeGame, step } from '../game/logic';
 import type { GameState } from '../game/types';
 import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
 import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
-import { Overlay, type HudModel } from './Hud';
+import { Overlay, type HudModel, type UiMode } from './Hud';
+import {
+  clampLayout,
+  defaultLayout,
+  gearRect,
+  inventoryRects,
+  loadLayout,
+  mergeLayout,
+  patchElement,
+  placeElement,
+  saveLayout,
+  type Field,
+  type HudElement,
+  type HudElementId,
+  type HudLayout,
+} from './hudLayout';
+import { createAppStore } from './storage';
+import {
+  FRESH_TUTORIAL,
+  advanceTutorial,
+  freshSession,
+  loadTutorial,
+  sameProgress,
+  saveTutorial,
+  type TutorialCue,
+  type TutorialProgress,
+  type TutorialSession,
+} from './tutorial';
 
 const INITIAL_HUD: HudModel = {
   mode: 'ready',
@@ -52,6 +79,8 @@ interface DebugSnapshot {
   fireId: number | null;
   width: number;
   height: number;
+  cue: string | null;
+  ui: string;
 }
 
 declare global {
@@ -59,6 +88,10 @@ declare global {
     __ALIEN__?: {
       snapshot: () => DebugSnapshot;
       apply: (change: (state: GameState) => void) => void;
+      openSettings: () => void;
+      openEditor: () => void;
+      closeUi: () => void;
+      setTutorial: (progress: TutorialProgress) => void;
     };
   }
 }
@@ -74,7 +107,7 @@ export function GameScreen() {
   const stateRef = useRef<GameState | null>(null);
   const controlsRef = useRef(new Controls());
   const canvasRef = useRef<GameCanvasHandle>(null);
-  const layoutRef = useRef(playfield);
+  const playfieldRef = useRef(playfield);
   const offsetRef = useRef(0);
   const bottomRef = useRef(14);
   const fineRef = useRef(false);
@@ -83,7 +116,22 @@ export function GameScreen() {
   const restartRef = useRef(false);
   const hudRef = useRef(INITIAL_HUD);
   const [hud, setHud] = useState<HudModel>(INITIAL_HUD);
-  layoutRef.current = playfield;
+  const storeRef = useRef(createAppStore());
+  const hudLayoutRef = useRef<HudLayout | null>(null);
+  const savedLayoutRef = useRef<HudElement[] | null>(null);
+  const loadedRef = useRef(false);
+  const [layout, setLayout] = useState<HudLayout | null>(null);
+  const tutorialRef = useRef<TutorialProgress>(FRESH_TUTORIAL);
+  const sessionRef = useRef<TutorialSession>(freshSession());
+  const cueRef = useRef<TutorialCue>(null);
+  const [cue, setCue] = useState<TutorialCue>(null);
+  const uiRef = useRef<UiMode>('none');
+  const openUiRef = useRef<(next: UiMode) => void>(() => {});
+  const [ui, setUi] = useState<UiMode>('none');
+  const [selected, setSelected] = useState<HudElementId>('score');
+  const topRef = useRef(14);
+  const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
+  playfieldRef.current = playfield;
   offsetRef.current = Math.max(0, (window.width - playfield.width) / 2);
   fineRef.current = finePointer;
 
@@ -124,6 +172,7 @@ export function GameScreen() {
         return { x: state?.shipX ?? 0, y: state?.shipY ?? 0 };
       },
       () => onPressRef.current(),
+      () => uiRef.current !== 'none',
     );
   }, []);
 
@@ -145,30 +194,66 @@ export function GameScreen() {
   }, []);
 
   useEffect(() => {
+    let cancel = false;
+    const store = storeRef.current;
+    void (async () => {
+      const [progress, saved] = await Promise.all([loadTutorial(store), loadLayout(store)]);
+      if (cancel) return;
+      tutorialRef.current = progress;
+      savedLayoutRef.current = saved;
+      loadedRef.current = true;
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
     let frame = 0;
     let last = performance.now();
     const loop = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      const { width, height } = layoutRef.current;
+      const { width, height } = playfieldRef.current;
       if (!stateRef.current && width > 0 && height > 0) {
         stateRef.current = createGame(width, height);
       }
       const state = stateRef.current;
+      const field = fieldRef.current;
+      if (loadedRef.current && !hudLayoutRef.current && width > 0 && height > 0) {
+        const next = mergeLayout(savedLayoutRef.current, field);
+        hudLayoutRef.current = next;
+        setLayout(next);
+      }
       if (state && width > 0 && height > 0) {
         if (state.width !== width || state.height !== height) {
           resizeGame(state, width, height);
           controlsRef.current.reanchor(state.shipX, state.shipY);
         }
+        if (hudLayoutRef.current) {
+          const count = Math.max(1, uiRef.current === 'editor' ? 3 : state.inventory.length);
+          const clamped = clampLayout(hudLayoutRef.current, field, count);
+          if (clamped.changed) {
+            hudLayoutRef.current = clamped.layout;
+            setLayout(clamped.layout);
+            void saveLayout(storeRef.current, clamped.layout);
+          }
+        }
+        const inventory = hudLayoutRef.current?.elements.find((element) => element.id === 'inventory');
         const slots =
-          state.mode === 'playing'
-            ? inventorySlots(width, height, bottomRef.current, state.inventory.length)
+          inventory && state.mode === 'playing' && uiRef.current === 'none'
+            ? inventoryRects(inventory, field, state.inventory.length, offsetRef.current)
             : [];
-        controlsRef.current.setInventoryRects(
-          slots.map((slot) => ({ ...slot, x: slot.x + offsetRef.current })),
+        controlsRef.current.setInventoryRects(slots);
+        const gear = gearRect(field);
+        controlsRef.current.setChromeRects(
+          uiRef.current === 'none' ? [{ ...gear, x: gear.x + offsetRef.current }] : [],
         );
-        if (!pausedRef.current) {
-          const control = controlsRef.current.frame();
+        const shotsBefore = state.shotsFired;
+        const inventoryBefore = state.inventory.length;
+        const frozen = pausedRef.current || uiRef.current !== 'none';
+        const control = controlsRef.current.frame();
+        if (!frozen) {
           const restarting = restartRef.current && state.mode === 'over';
           step(
             state,
@@ -184,10 +269,49 @@ export function GameScreen() {
           startRef.current = false;
           restartRef.current = false;
           if (restarting) controlsRef.current.reanchor(state.shipX, state.shipY);
+        } else {
+          controlsRef.current.consumePower();
+        }
+        if (controlsRef.current.consumeChrome()) openUiRef.current('settings');
+        const tutorial = advanceTutorial(tutorialRef.current, sessionRef.current, {
+          mode: state.mode,
+          dt,
+          shipX: state.shipX,
+          shipY: state.shipY,
+          moveInput: !frozen && (control.moveActive || control.keyX !== 0 || control.keyY !== 0),
+          shotsFired: state.shotsFired,
+          shotsBefore,
+          inventory: state.inventory.length,
+          inventoryBefore,
+          frozen,
+        });
+        sessionRef.current = tutorial.session;
+        if (!sameProgress(tutorialRef.current, tutorial.progress)) {
+          tutorialRef.current = tutorial.progress;
+          void saveTutorial(storeRef.current, tutorial.progress);
+        }
+        if (cueRef.current !== tutorial.cue) {
+          cueRef.current = tutorial.cue;
+          setCue(tutorial.cue);
         }
         canvasRef.current?.draw(state);
         publishHud(state, hudRef, setHud, fineRef.current);
-        publishDebug(state, controlsRef.current);
+        publishDebug(state, controlsRef.current, {
+        openSettings: () => openUiRef.current('settings'),
+        openEditor: () => openUiRef.current('editor'),
+        closeUi: () => openUiRef.current('none'),
+        setTutorial: (progress) => {
+          tutorialRef.current = progress;
+          sessionRef.current = {
+            ...freshSession(),
+            inRun: state.mode === 'playing',
+            anchorX: state.shipX,
+            anchorY: state.shipY,
+          };
+        },
+        cue: () => cueRef.current,
+        ui: () => uiRef.current,
+      });
       }
       frame = requestAnimationFrame(loop);
     };
@@ -198,6 +322,23 @@ export function GameScreen() {
   const top = Math.max(insets.top, browserInsets.top, 14);
   const bottom = Math.max(insets.bottom, browserInsets.bottom, 14);
   bottomRef.current = bottom;
+  topRef.current = top;
+  fieldRef.current = { width: playfield.width, height: playfield.height, top, bottom };
+  const field = fieldRef.current;
+
+  openUiRef.current = (next) => {
+    uiRef.current = next;
+    setUi(next);
+    if (next !== 'none') controlsRef.current.clearTransient();
+  };
+
+  const commitLayout = (next: HudLayout, persist: boolean) => {
+    hudLayoutRef.current = next;
+    setLayout(next);
+    if (persist) void saveLayout(storeRef.current, next);
+  };
+
+  const inventoryCount = Math.max(3, stateRef.current?.inventory.length ?? 0);
 
   return (
     <View
@@ -205,11 +346,54 @@ export function GameScreen() {
       collapsable={false}
       accessibilityLabel="Alien Shooter. Drag one finger to move the ship. Hold a second finger anywhere to fire."
       style={[styles.root, webTouch as object]}
-      {...nativeTouchProps(controlsRef, stateRef, () => onPressRef.current())}
+      {...nativeTouchProps(controlsRef, stateRef, uiRef, () => onPressRef.current())}
     >
-      <View pointerEvents="none" style={{ width: playfield.width, height: playfield.height }}>
-        <GameCanvas ref={canvasRef} width={playfield.width} height={playfield.height} />
-        <Overlay model={hud} top={top} bottom={bottom} finePointer={finePointer} />
+      <View pointerEvents="box-none" style={{ width: playfield.width, height: playfield.height }}>
+        <View pointerEvents="none" style={styles.playfield}>
+          <GameCanvas ref={canvasRef} width={playfield.width} height={playfield.height} />
+        </View>
+        {layout ? (
+          <Overlay
+            model={hud}
+            layout={layout}
+            field={field}
+            finePointer={finePointer}
+            cue={cue}
+            ui={ui}
+            selected={selected}
+            onOpenSettings={() => openUiRef.current('settings')}
+            onCloseUi={() => openUiRef.current('none')}
+            onReplayTutorial={() => {
+              tutorialRef.current = { ...FRESH_TUTORIAL };
+              const current = stateRef.current;
+              sessionRef.current = {
+                ...freshSession(),
+                inRun: current?.mode === 'playing',
+                anchorX: current?.shipX ?? 0,
+                anchorY: current?.shipY ?? 0,
+              };
+              cueRef.current = null;
+              setCue(null);
+              void saveTutorial(storeRef.current, FRESH_TUTORIAL);
+              openUiRef.current('none');
+            }}
+            onEditHud={() => openUiRef.current('editor')}
+            onDoneEditing={() => openUiRef.current('settings')}
+            onSelect={setSelected}
+            onPlace={(id, x, y) => {
+              if (!hudLayoutRef.current) return;
+              commitLayout(placeElement(hudLayoutRef.current, id, x, y, field, inventoryCount), false);
+            }}
+            onPlaceEnd={() => {
+              if (hudLayoutRef.current) void saveLayout(storeRef.current, hudLayoutRef.current);
+            }}
+            onPatch={(id, patch) => {
+              if (!hudLayoutRef.current) return;
+              commitLayout(patchElement(hudLayoutRef.current, id, patch, field, inventoryCount), true);
+            }}
+            onResetLayout={() => commitLayout(defaultLayout(field), true)}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -276,7 +460,18 @@ function publishHud(
   setHud(next);
 }
 
-function publishDebug(state: GameState, controls: Controls): void {
+function publishDebug(
+  state: GameState,
+  controls: Controls,
+  ui: {
+    openSettings: () => void;
+    openEditor: () => void;
+    closeUi: () => void;
+    setTutorial: (progress: TutorialProgress) => void;
+    cue: () => TutorialCue;
+    ui: () => UiMode;
+  },
+): void {
   if (Platform.OS !== 'web' || !debugEnabled()) return;
   window.__ALIEN__ = {
     snapshot: () => ({
@@ -298,8 +493,14 @@ function publishDebug(state: GameState, controls: Controls): void {
       fireId: controls.fireId,
       width: state.width,
       height: state.height,
+      cue: ui.cue(),
+      ui: ui.ui(),
     }),
     apply: (change) => change(state),
+    openSettings: ui.openSettings,
+    openEditor: ui.openEditor,
+    closeUi: ui.closeUi,
+    setTutorial: ui.setTutorial,
   };
 }
 
@@ -310,6 +511,7 @@ function debugEnabled(): boolean {
 function nativeTouchProps(
   controlsRef: { current: Controls },
   stateRef: { current: GameState | null },
+  uiRef: { current: UiMode },
   onPress: () => void,
 ) {
   if (Platform.OS === 'web') return {};
@@ -328,10 +530,14 @@ function nativeTouchProps(
   };
   return {
     onTouchStart: (event: GestureResponderEvent) => {
+      if (uiRef.current !== 'none') return;
       const state = stateRef.current;
       if (!state) return;
-      each(event, 'changed', (id, x, y) => controlsRef.current.pointerDown(id, x, y, state.shipX, state.shipY));
-      onPress();
+      let play = false;
+      each(event, 'changed', (id, x, y) => {
+        if (controlsRef.current.pointerDown(id, x, y, state.shipX, state.shipY) === 'play') play = true;
+      });
+      if (play) onPress();
     },
     onTouchMove: (event: GestureResponderEvent) => {
       const native = event.nativeEvent;
@@ -344,8 +550,8 @@ function nativeTouchProps(
     onTouchCancel: (event: GestureResponderEvent) => {
       each(event, 'changed', (id) => controlsRef.current.pointerUp(id));
     },
-    onStartShouldSetResponder: () => true,
-    onMoveShouldSetResponder: () => true,
+    onStartShouldSetResponder: () => uiRef.current === 'none',
+    onMoveShouldSetResponder: () => uiRef.current === 'none',
     onResponderTerminationRequest: () => false,
   };
 }
@@ -392,5 +598,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  playfield: {
+    ...StyleSheet.absoluteFill,
   },
 });

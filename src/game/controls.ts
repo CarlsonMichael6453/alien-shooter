@@ -19,6 +19,8 @@ export interface BombRect {
   h: number;
 }
 
+export type PointerRole = 'play' | 'power' | 'chrome';
+
 interface Track {
   id: number;
   role: 'move' | 'fire';
@@ -45,15 +47,27 @@ export class Controls {
   private pointers = new Map<number, Track>();
   private keys = new Set<string>();
   private inventoryRects: BombRect[] = [];
+  private chromeRects: BombRect[] = [];
   private powerRequest: number | null = null;
+  private chromeRequest = false;
 
   setInventoryRects(rects: BombRect[]): void {
     this.inventoryRects = rects;
   }
 
+  setChromeRects(rects: BombRect[]): void {
+    this.chromeRects = rects;
+  }
+
   consumePower(): number | null {
     const requested = this.powerRequest;
     this.powerRequest = null;
+    return requested;
+  }
+
+  consumeChrome(): boolean {
+    const requested = this.chromeRequest;
+    this.chromeRequest = false;
     return requested;
   }
 
@@ -63,12 +77,16 @@ export class Controls {
     this.hoverActive = true;
   }
 
-  pointerDown(id: number, x: number, y: number, shipX: number, shipY: number): void {
-    if (this.pointers.has(id)) return;
+  pointerDown(id: number, x: number, y: number, shipX: number, shipY: number): PointerRole {
+    if (this.pointers.has(id)) return 'play';
     const slot = this.hitsInventory(x, y);
     if (slot >= 0) {
       this.powerRequest = slot;
-      return;
+      return 'power';
+    }
+    if (this.hitsChrome(x, y)) {
+      this.chromeRequest = true;
+      return 'chrome';
     }
     if (this.moveId == null) {
       this.moveId = id;
@@ -82,7 +100,7 @@ export class Controls {
         shipX,
         shipY,
       });
-      return;
+      return 'play';
     }
     if (this.fireId == null) {
       this.fireId = id;
@@ -97,6 +115,7 @@ export class Controls {
         shipY,
       });
     }
+    return 'play';
   }
 
   pointerMove(id: number, x: number, y: number): void {
@@ -115,21 +134,24 @@ export class Controls {
   }
 
   /** Left button steers. Right or middle button fires, even if it lands first. */
-  mouseDown(button: number, x: number, y: number, shipX: number, shipY: number): void {
+  mouseDown(button: number, x: number, y: number, shipX: number, shipY: number): PointerRole {
     const slot = this.hitsInventory(x, y);
     if (slot >= 0) {
       this.powerRequest = slot;
-      return;
+      return 'power';
+    }
+    if (this.hitsChrome(x, y)) {
+      this.chromeRequest = true;
+      return 'chrome';
     }
     if (button === 0) {
-      if (this.moveId != null && this.moveId !== -1) return;
+      if (this.moveId != null && this.moveId !== -1) return 'play';
       this.pointerUp(-1);
-      this.pointerDown(-1, x, y, shipX, shipY);
-      return;
+      return this.pointerDown(-1, x, y, shipX, shipY);
     }
     if (button === 1 || button === 2) {
       this.mouseFire = true;
-      if (this.fireId != null && this.fireId !== -2) return;
+      if (this.fireId != null && this.fireId !== -2) return 'play';
       this.pointerUp(-2);
       this.fireId = -2;
       this.pointers.set(-2, {
@@ -143,6 +165,7 @@ export class Controls {
         shipY,
       });
     }
+    return 'play';
   }
 
   mouseMove(x: number, y: number): void {
@@ -179,6 +202,7 @@ export class Controls {
     this.mouseFire = false;
     this.hoverActive = false;
     this.powerRequest = null;
+    this.chromeRequest = false;
   }
 
   /** Keep the ship from jumping after a restart or a resize while a finger is down. */
@@ -248,5 +272,9 @@ export class Controls {
       if (x >= rect.x && y >= rect.y && x <= rect.x + rect.w && y <= rect.y + rect.h) return index;
     }
     return -1;
+  }
+
+  private hitsChrome(x: number, y: number): boolean {
+    return this.chromeRects.some((rect) => x >= rect.x && y >= rect.y && x <= rect.x + rect.w && y <= rect.y + rect.h);
   }
 }
