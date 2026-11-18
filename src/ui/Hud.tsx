@@ -29,10 +29,10 @@ export function Overlay({ model, top, bottom, finePointer }: Props) {
           <View>
             <Text style={styles.label}>SCORE</Text>
             <Text style={styles.score}>{formatScore(model.score)}</Text>
-            <Text style={[styles.ammoLabel, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 30 ? styles.ammoLow : null]}>
+            <Text style={[styles.ammoLabel, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 8 ? styles.ammoLow : null]}>
               AMMO
             </Text>
-            <Text style={[styles.ammo, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 30 ? styles.ammoLow : null]}>
+            <Text style={[styles.ammo, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 8 ? styles.ammoLow : null]}>
               {formatScore(model.ammo)}
             </Text>
           </View>

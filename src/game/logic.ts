@@ -1,6 +1,6 @@
 import {
-  AMMO_WEIGHT_100,
-  AMMO_WEIGHT_50,
+  AMMO_WEIGHT_MID,
+  AMMO_WEIGHT_SMALL,
   BOMB_BLAST_TIME,
   BOMB_DAMAGE,
   BOMB_FUSE,
@@ -75,11 +75,11 @@ export function halfScreenRadius(width: number, height: number): number {
   return Math.sqrt((width * height) / (2 * Math.PI));
 }
 
-export function rollAmmoAmount(rng: Rng): 50 | 100 | 200 {
+export function rollAmmoAmount(rng: Rng): 10 | 20 | 40 {
   const roll = rng.next();
-  if (roll < AMMO_WEIGHT_50) return 50;
-  if (roll < AMMO_WEIGHT_100) return 100;
-  return 200;
+  if (roll < AMMO_WEIGHT_SMALL) return 10;
+  if (roll < AMMO_WEIGHT_MID) return 20;
+  return 40;
 }
 
 export function createGame(
@@ -439,12 +439,12 @@ function spawnEnemies(state: GameState, dt: number): void {
   if (state.enemies.length >= diff.maxEnemies) return;
 
   const roll = state.rng.next();
-  const tier: 50 | 100 | 200 =
-    roll < diff.cruiserChance ? 200 : roll < diff.cruiserChance + diff.saucerChance ? 100 : 50;
-  const radius = tier === 200 ? 36 : tier === 100 ? 24 : 15;
+  const tier: 5 | 10 | 15 =
+    roll < diff.cruiserChance ? 15 : roll < diff.cruiserChance + diff.saucerChance ? 10 : 5;
+  const radius = tier === 15 ? 36 : tier === 10 ? 24 : 15;
   const speedJitter = 0.88 + state.rng.next() * 0.22;
-  const speed = diff.speed * speedJitter * (tier === 200 ? 0.55 : tier === 100 ? 0.9 : 1.28);
-  const wobble = tier === 200 ? 0 : diff.wobble * (tier === 50 ? 1.15 : 0.7);
+  const speed = diff.speed * speedJitter * (tier === 15 ? 0.55 : tier === 10 ? 0.9 : 1.28);
+  const wobble = tier === 15 ? 0 : diff.wobble * (tier === 5 ? 1.15 : 0.7);
   const pad = radius + wobble + 10;
   let x = pad + state.rng.next() * Math.max(8, state.width - pad * 2);
   if (state.time < 2.5 && Math.abs(x - state.shipX) < 80) {
@@ -453,21 +453,21 @@ function spawnEnemies(state: GameState, dt: number): void {
 
   state.enemies.push({
     id: state.nextId++,
-    kind: tier === 200 ? 'asteroid' : 'alien',
-    shape: tier === 200 ? 'cruiser' : tier === 100 ? 'saucer' : 'dart',
+    kind: tier === 15 ? 'asteroid' : 'alien',
+    shape: tier === 15 ? 'cruiser' : tier === 10 ? 'saucer' : 'dart',
     x,
     y: -radius - 8,
     baseX: x,
-    vx: tier === 200 ? (state.rng.next() - 0.5) * 28 : 0,
+    vx: tier === 15 ? (state.rng.next() - 0.5) * 28 : 0,
     vy: speed,
     r: radius,
     rot: state.rng.next() * Math.PI * 2,
-    rotSpeed: (state.rng.next() - 0.5) * (tier === 200 ? 0.8 : 0.7),
+    rotSpeed: (state.rng.next() - 0.5) * (tier === 15 ? 0.8 : 0.7),
     phase: state.rng.next() * Math.PI * 2,
     wobbleAmp: wobble,
     wobbleFreq: 1.1 + state.rng.next() * 1.1,
     tint: state.rng.next(),
-    score: tier,
+    score: tier * 10,
     hp: tier,
     maxHp: tier,
   });

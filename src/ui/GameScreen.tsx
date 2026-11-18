@@ -25,7 +25,7 @@ const INITIAL_HUD: HudModel = {
   score: 0,
   best: 0,
   lives: 3,
-  ammo: 100,
+  ammo: 20,
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
