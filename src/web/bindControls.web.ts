@@ -12,6 +12,9 @@ const GAME_KEYS = new Set([
   'Space',
   'Enter',
   'KeyJ',
+  'Digit1',
+  'Digit2',
+  'Digit3',
 ]);
 
 export function bindControls(
@@ -60,8 +63,9 @@ export function bindControls(
 
   const onPointerMove = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse') return;
-    if ((event.buttons & 1) === 0) return;
     const point = local(event.clientX, event.clientY);
+    controls.hover(point.x, point.y);
+    if ((event.buttons & 1) === 0 && (event.buttons & 2) === 0) return;
     controls.mouseMove(point.x, point.y);
   };
 

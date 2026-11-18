@@ -112,4 +112,25 @@ describe('two-finger controls', () => {
     controls.mouseUp(2);
     assert.equal(controls.frame().firing, false);
   });
+
+  it('treats a tap on the bomb button as a bomb, not a steering finger', () => {
+    const controls = new Controls();
+    controls.setInventoryRects([{ x: 14, y: 700, w: 56, h: 56 }]);
+    controls.pointerDown(1, 30, 720, 100, 100);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.consumePower(), null);
+    controls.pointerDown(2, 40, 40, 100, 100);
+    assert.equal(controls.moveId, 2);
+  });
+
+  it('reports how far the firing finger has dragged', () => {
+    const controls = new Controls();
+    controls.pointerDown(1, 10, 10, 0, 0);
+    controls.pointerDown(2, 80, 200, 0, 0);
+    controls.pointerMove(2, 40, 120);
+    const frame = controls.frame();
+    assert.equal(frame.fireDragX, -40);
+    assert.equal(frame.fireDragY, -80);
+  });
 });

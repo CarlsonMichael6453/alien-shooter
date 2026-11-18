@@ -1,25 +1,40 @@
 import {
+  AMMO_WEIGHT_100,
+  AMMO_WEIGHT_50,
+  BOMB_BLAST_TIME,
+  BOMB_DAMAGE,
+  BOMB_FUSE,
+  BOMB_SPEED,
+  BULLET_DAMAGE,
   BULLET_RADIUS,
   BULLET_SPEED,
   FIRE_INTERVAL,
   INVULN_TIME,
   KEYBOARD_SPEED,
+  LASER_AIM_DEADZONE,
+  LASER_DPS,
+  LASER_DURATION,
   MAX_BULLETS,
+  MAX_INVENTORY,
   MAX_PARTICLES,
+  RAPID_CONE,
+  RAPID_DURATION,
+  RAPID_RATE,
   SHIP_HIT_RADIUS,
   SHIP_MARGIN,
+  START_AMMO,
   START_LIVES,
 } from './constants';
 import { createRng } from './rng';
-import type { Enemy, GameState, Intent, Particle, Rng } from './types';
+import type { Blast, Bomb, Enemy, GameState, Intent, Particle, Pickup, PickupKind, Rng } from './types';
 
 export interface Difficulty {
   spawnInterval: number;
   speed: number;
-  asteroidChance: number;
-  dartChance: number;
   maxEnemies: number;
   wobble: number;
+  cruiserChance: number;
+  saucerChance: number;
 }
 
 export function idleIntent(partial: Partial<Intent> = {}): Intent {
@@ -32,6 +47,12 @@ export function idleIntent(partial: Partial<Intent> = {}): Intent {
     keyY: 0,
     start: false,
     restart: false,
+    activateSlot: null,
+    fireDragX: 0,
+    fireDragY: 0,
+    hoverActive: false,
+    hoverX: 0,
+    hoverY: 0,
     ...partial,
   };
 }
@@ -40,13 +61,25 @@ export function difficulty(time: number): Difficulty {
   const t = clamp(time / 80, 0, 1);
   const s = t * t * (3 - 2 * t);
   return {
-    spawnInterval: lerp(1.28, 0.46, s),
-    speed: lerp(96, 236, s),
-    asteroidChance: lerp(0.3, 0.48, s),
-    dartChance: lerp(0.12, 0.34, s),
-    maxEnemies: Math.round(lerp(5, 11, s)),
-    wobble: lerp(14, 44, s),
+    spawnInterval: lerp(1.28, 0.5, s),
+    speed: lerp(92, 210, s),
+    maxEnemies: Math.round(lerp(4, 7, s)),
+    wobble: lerp(12, 36, s),
+    cruiserChance: lerp(0.06, 0.18, s),
+    saucerChance: lerp(0.24, 0.34, s),
   };
+}
+
+/** Circle whose area is half the playfield. */
+export function halfScreenRadius(width: number, height: number): number {
+  return Math.sqrt((width * height) / (2 * Math.PI));
+}
+
+export function rollAmmoAmount(rng: Rng): 50 | 100 | 200 {
+  const roll = rng.next();
+  if (roll < AMMO_WEIGHT_50) return 50;
+  if (roll < AMMO_WEIGHT_100) return 100;
+  return 200;
 }
 
 export function createGame(
@@ -73,11 +106,22 @@ export function createGame(
     spawnCooldown: 0.55,
     shotsFired: 0,
     overTimer: 0,
+    ammo: START_AMMO,
+    inventory: [],
+    rapidTimer: 0,
+    laserTimer: 0,
+    laserAngle: -Math.PI / 2,
+    spark: 0,
     nextId: 1,
     bullets: [],
     enemies: [],
+    pickups: [],
+    bomb: null,
+    blast: null,
     particles: [],
     stars: [],
+    ammoCooldown: 5.5,
+    powerCooldown: 8,
     rng,
   };
   seedStars(state);
@@ -86,6 +130,7 @@ export function createGame(
 }
 
 export function makeEnemy(partial: Partial<Enemy> & Pick<Enemy, 'x' | 'y'>): Enemy {
+  const hp = partial.hp ?? 1;
   return {
     id: partial.id ?? 1,
     kind: partial.kind ?? 'alien',
@@ -103,6 +148,8 @@ export function makeEnemy(partial: Partial<Enemy> & Pick<Enemy, 'x' | 'y'>): Ene
     wobbleFreq: partial.wobbleFreq ?? 1,
     tint: partial.tint ?? 0.2,
     score: partial.score ?? 100,
+    hp,
+    maxHp: partial.maxHp ?? hp,
   };
 }
 
@@ -122,9 +169,22 @@ export function resizeGame(state: GameState, width: number, height: number): voi
     bullet.x *= sx;
     bullet.y *= sy;
   }
+  for (const pickup of state.pickups) {
+    pickup.x *= sx;
+    pickup.y *= sy;
+  }
   for (const particle of state.particles) {
     particle.x *= sx;
     particle.y *= sy;
+  }
+  if (state.bomb) {
+    state.bomb.x *= sx;
+    state.bomb.y *= sy;
+  }
+  if (state.blast) {
+    state.blast.x *= sx;
+    state.blast.y *= sy;
+    state.blast.maxRadius = halfScreenRadius(width, height);
   }
   state.width = width;
   state.height = height;
@@ -139,7 +199,6 @@ export function step(state: GameState, intent: Intent, dt: number): void {
     decayJuice(state, frame);
     moveParticles(state, frame);
     state.overTimer += frame;
-    // Ignore a tap that lands immediately so the card stays readable.
     if (!intent.restart || state.overTimer < 0.45) return;
     restart(state);
   }
@@ -151,17 +210,26 @@ export function step(state: GameState, intent: Intent, dt: number): void {
     state.mode = 'playing';
     state.time = 0;
     state.spawnCooldown = 0.55;
+    state.ammoCooldown = 5.5;
+    state.powerCooldown = 8;
   }
 
   state.time += frame;
   decayJuice(state, frame);
   moveShip(state, intent, frame);
+  updateAim(state, intent);
+  tickPowers(state, frame);
+  activatePower(state, intent);
+  tickBomb(state, frame);
+  tickBlast(state, frame);
   fire(state, intent, frame);
-  spawn(state, frame);
+  spawnEnemies(state, frame);
+  spawnPickups(state, frame);
   moveBullets(state, frame);
   moveEnemies(state, frame);
+  movePickups(state, frame);
   moveParticles(state, frame);
-  collide(state);
+  collide(state, frame);
   driftStars(state, frame);
 }
 
@@ -170,6 +238,11 @@ function restart(state: GameState): void {
   state.time = 0;
   state.score = 0;
   state.lives = START_LIVES;
+  state.ammo = START_AMMO;
+  state.inventory = [];
+  state.rapidTimer = 0;
+  state.laserTimer = 0;
+  state.laserAngle = -Math.PI / 2;
   state.shipX = state.width / 2;
   state.shipY = state.height - 118;
   state.firing = false;
@@ -179,10 +252,16 @@ function restart(state: GameState): void {
   state.muzzle = 0;
   state.fireCooldown = 0;
   state.spawnCooldown = 0.55;
+  state.ammoCooldown = 5.5;
+  state.powerCooldown = 8;
   state.shotsFired = 0;
   state.overTimer = 0;
+  state.spark = 0;
   state.bullets = [];
   state.enemies = [];
+  state.pickups = [];
+  state.bomb = null;
+  state.blast = null;
   state.particles = [];
   clampShip(state);
 }
@@ -205,40 +284,136 @@ function moveShip(state: GameState, intent: Intent, dt: number): void {
   clampShip(state);
 }
 
-function fire(state: GameState, intent: Intent, dt: number): void {
-  state.firing = intent.firing;
-  state.fireCooldown -= dt;
-  if (!intent.firing) {
-    if (state.fireCooldown < 0) state.fireCooldown = 0;
+function updateAim(state: GameState, intent: Intent): void {
+  if (state.laserTimer <= 0) return;
+  const drag = Math.hypot(intent.fireDragX, intent.fireDragY);
+  if (drag >= LASER_AIM_DEADZONE) {
+    state.laserAngle = Math.atan2(intent.fireDragY, intent.fireDragX);
     return;
   }
-  let guard = 0;
-  while (state.fireCooldown <= 0 && state.bullets.length < MAX_BULLETS && guard < 4) {
-    state.bullets.push({
-      id: state.nextId++,
-      x: state.shipX,
-      y: state.shipY - 30,
-      vy: -BULLET_SPEED,
-      r: BULLET_RADIUS,
-    });
-    state.shotsFired += 1;
-    state.muzzle = 0.07;
-    state.fireCooldown += FIRE_INTERVAL;
-    guard += 1;
-    pushParticle(state, {
-      x: state.shipX,
-      y: state.shipY - 26,
-      vx: 0,
-      vy: -30,
-      life: 0.08,
-      maxLife: 0.08,
-      r: 6,
-      color: '#E7FBFF',
-    });
+  if (intent.hoverActive) {
+    state.laserAngle = Math.atan2(intent.hoverY - state.shipY, intent.hoverX - state.shipX);
   }
 }
 
-function spawn(state: GameState, dt: number): void {
+function tickPowers(state: GameState, dt: number): void {
+  state.rapidTimer = Math.max(0, state.rapidTimer - dt);
+  state.laserTimer = Math.max(0, state.laserTimer - dt);
+}
+
+function powerActive(state: GameState): boolean {
+  return state.rapidTimer > 0 || state.laserTimer > 0 || state.bomb != null || state.blast != null;
+}
+
+function activatePower(state: GameState, intent: Intent): void {
+  if (intent.activateSlot == null || powerActive(state)) return;
+  const kind = state.inventory[intent.activateSlot];
+  if (!kind) return;
+  state.inventory.splice(intent.activateSlot, 1);
+  if (kind === 'rapid') {
+    state.rapidTimer = RAPID_DURATION;
+    return;
+  }
+  if (kind === 'laser') {
+    state.laserTimer = LASER_DURATION;
+    state.laserAngle = -Math.PI / 2;
+    return;
+  }
+  state.bomb = {
+    x: state.shipX,
+    y: state.shipY - 28,
+    vy: -BOMB_SPEED,
+    age: 0,
+    pulse: 1,
+  };
+}
+
+function tickBomb(state: GameState, dt: number): void {
+  const bomb = state.bomb;
+  if (!bomb) return;
+  const previous = Math.floor(bomb.age);
+  bomb.age += dt;
+  bomb.y += bomb.vy * dt;
+  bomb.pulse = Math.max(0, bomb.pulse - dt * 2.6);
+  if (Math.floor(bomb.age) !== previous) bomb.pulse = 1;
+  if (bomb.age >= BOMB_FUSE) {
+    detonate(state, bomb);
+  }
+}
+
+function detonate(state: GameState, bomb: Bomb): void {
+  state.bomb = null;
+  state.blast = {
+    x: bomb.x,
+    y: bomb.y,
+    age: 0,
+    maxRadius: halfScreenRadius(state.width, state.height),
+    hit: [],
+  };
+  state.shake = 1;
+  state.hitFlash = 0.18;
+  burst(state, bomb.x, bomb.y, '#FFD36A', 18);
+}
+
+function tickBlast(state: GameState, dt: number): void {
+  const blast = state.blast;
+  if (!blast) return;
+  blast.age += dt;
+  if (blast.age > BOMB_BLAST_TIME + 0.15) state.blast = null;
+}
+
+function fire(state: GameState, intent: Intent, dt: number): void {
+  const rapid = state.rapidTimer > 0;
+  const laserOn = state.laserTimer > 0;
+  state.firing = intent.firing && !laserOn && (rapid || state.ammo > 0);
+  if (laserOn) {
+    state.spark += dt;
+    if (state.spark >= 0.04) {
+      state.spark = 0;
+      const nose = beamNose(state);
+      const along = 30 + state.rng.next() * 180;
+      pushParticle(state, {
+        x: nose.x + Math.cos(state.laserAngle) * along,
+        y: nose.y + Math.sin(state.laserAngle) * along,
+        vx: (state.rng.next() - 0.5) * 40,
+        vy: (state.rng.next() - 0.5) * 40,
+        life: 0.18,
+        maxLife: 0.18,
+        r: 2 + state.rng.next() * 2.4,
+        color: state.rng.next() > 0.5 ? '#FFB020' : '#FF4A2A',
+      });
+    }
+    return;
+  }
+
+  state.fireCooldown -= dt;
+  if (!intent.firing || (!rapid && state.ammo <= 0)) {
+    if (state.fireCooldown < 0) state.fireCooldown = 0;
+    return;
+  }
+
+  const interval = FIRE_INTERVAL / (rapid ? RAPID_RATE : 1);
+  let guard = 0;
+  while (state.fireCooldown <= 0 && state.bullets.length < MAX_BULLETS && (rapid || state.ammo > 0) && guard < 6) {
+    const spread = rapid ? (state.rng.next() - 0.5) * RAPID_CONE : 0;
+    const angle = -Math.PI / 2 + spread;
+    state.bullets.push({
+      id: state.nextId++,
+      x: state.shipX + Math.cos(angle) * 8,
+      y: state.shipY - 24 + Math.sin(angle) * 8,
+      vx: Math.cos(angle) * BULLET_SPEED,
+      vy: Math.sin(angle) * BULLET_SPEED,
+      r: BULLET_RADIUS,
+    });
+    if (!rapid) state.ammo -= 1;
+    state.shotsFired += 1;
+    state.muzzle = 0.07;
+    state.fireCooldown += interval;
+    guard += 1;
+  }
+}
+
+function spawnEnemies(state: GameState, dt: number): void {
   state.spawnCooldown -= dt;
   if (state.spawnCooldown > 0) return;
   const diff = difficulty(state.time);
@@ -246,53 +421,87 @@ function spawn(state: GameState, dt: number): void {
   if (state.enemies.length >= diff.maxEnemies) return;
 
   const roll = state.rng.next();
-  const asteroid = roll < diff.asteroidChance;
-  const dart = !asteroid && state.rng.next() < diff.dartChance;
-  const radius = asteroid
-    ? lerp(15, 34, state.rng.next())
-    : dart
-      ? lerp(12, 16, state.rng.next())
-      : lerp(20, 28, state.rng.next());
-  const speedJitter = 0.86 + state.rng.next() * 0.28;
-  const speed =
-    diff.speed * speedJitter * (dart ? 1.38 : asteroid ? 0.8 : 1);
-  const wobble = asteroid ? 0 : diff.wobble * (dart ? 1.25 : 0.85) * (0.65 + state.rng.next() * 0.55);
-  const pad = radius + wobble + 8;
+  const tier: 50 | 100 | 200 =
+    roll < diff.cruiserChance ? 200 : roll < diff.cruiserChance + diff.saucerChance ? 100 : 50;
+  const radius = tier === 200 ? 36 : tier === 100 ? 24 : 15;
+  const speedJitter = 0.88 + state.rng.next() * 0.22;
+  const speed = diff.speed * speedJitter * (tier === 200 ? 0.55 : tier === 100 ? 0.9 : 1.28);
+  const wobble = tier === 200 ? 0 : diff.wobble * (tier === 50 ? 1.15 : 0.7);
+  const pad = radius + wobble + 10;
   let x = pad + state.rng.next() * Math.max(8, state.width - pad * 2);
-  if (state.time < 2.5 && Math.abs(x - state.shipX) < 70) {
-    x = x < state.width / 2 ? Math.min(state.width - pad, x + 110) : Math.max(pad, x - 110);
+  if (state.time < 2.5 && Math.abs(x - state.shipX) < 80) {
+    x = x < state.width / 2 ? Math.min(state.width - pad, x + 120) : Math.max(pad, x - 120);
   }
 
   state.enemies.push({
     id: state.nextId++,
-    kind: asteroid ? 'asteroid' : 'alien',
-    shape: asteroid ? 'rock' : dart ? 'dart' : 'saucer',
+    kind: tier === 200 ? 'asteroid' : 'alien',
+    shape: tier === 200 ? 'cruiser' : tier === 100 ? 'saucer' : 'dart',
     x,
-    y: -radius - 6,
+    y: -radius - 8,
     baseX: x,
-    vx: asteroid ? (state.rng.next() - 0.5) * 46 : 0,
+    vx: tier === 200 ? (state.rng.next() - 0.5) * 28 : 0,
     vy: speed,
     r: radius,
     rot: state.rng.next() * Math.PI * 2,
-    rotSpeed: (state.rng.next() - 0.5) * (asteroid ? 2.2 : 0.6),
+    rotSpeed: (state.rng.next() - 0.5) * (tier === 200 ? 0.8 : 0.7),
     phase: state.rng.next() * Math.PI * 2,
     wobbleAmp: wobble,
-    wobbleFreq: 1.1 + state.rng.next() * 1.3,
+    wobbleFreq: 1.1 + state.rng.next() * 1.1,
     tint: state.rng.next(),
-    score: dart ? 150 : asteroid ? 50 : 100,
+    score: tier,
+    hp: tier,
+    maxHp: tier,
+  });
+}
+
+function spawnPickups(state: GameState, dt: number): void {
+  const ramp = clamp(state.time / 80, 0, 1);
+  state.ammoCooldown -= dt;
+  if (state.ammoCooldown <= 0) {
+    state.ammoCooldown = lerp(9, 6.5, ramp);
+    spawnPickup(state, 'ammo', rollAmmoAmount(state.rng));
+  }
+  state.powerCooldown -= dt;
+  if (state.powerCooldown <= 0) {
+    state.powerCooldown = lerp(15, 11, ramp);
+    const roll = state.rng.next();
+    const kind: PickupKind = roll < 0.4 ? 'rapid' : roll < 0.7 ? 'bomb' : 'laser';
+    spawnPickup(state, kind, 0);
+  }
+}
+
+function spawnPickup(state: GameState, kind: PickupKind, amount: number): void {
+  const r = 22;
+  const pad = r + 16;
+  const x = pad + state.rng.next() * Math.max(8, state.width - pad * 2);
+  state.pickups.push({
+    id: state.nextId++,
+    kind,
+    amount,
+    x,
+    y: -r - 4,
+    vy: 72,
+    r,
+    spin: state.rng.next() * Math.PI * 2,
   });
 }
 
 function moveBullets(state: GameState, dt: number): void {
-  for (const bullet of state.bullets) bullet.y += bullet.vy * dt;
-  state.bullets = state.bullets.filter((bullet) => bullet.y > -40);
+  for (const bullet of state.bullets) {
+    bullet.x += bullet.vx * dt;
+    bullet.y += bullet.vy * dt;
+  }
+  state.bullets = state.bullets.filter(
+    (bullet) => bullet.y > -40 && bullet.y < state.height + 40 && bullet.x > -40 && bullet.x < state.width + 40,
+  );
 }
 
 function moveEnemies(state: GameState, dt: number): void {
   for (const enemy of state.enemies) {
     enemy.y += enemy.vy * dt;
     enemy.rot += enemy.rotSpeed * dt;
-    if (enemy.shape === 'rock') {
+    if (enemy.shape === 'cruiser' || enemy.shape === 'rock') {
       enemy.x += enemy.vx * dt;
       if (enemy.x < enemy.r) {
         enemy.x = enemy.r;
@@ -309,6 +518,14 @@ function moveEnemies(state: GameState, dt: number): void {
   state.enemies = state.enemies.filter((enemy) => enemy.y < state.height + enemy.r + 36);
 }
 
+function movePickups(state: GameState, dt: number): void {
+  for (const pickup of state.pickups) {
+    pickup.y += pickup.vy * dt;
+    pickup.spin += dt;
+  }
+  state.pickups = state.pickups.filter((pickup) => pickup.y < state.height + pickup.r + 20);
+}
+
 function moveParticles(state: GameState, dt: number): void {
   for (const particle of state.particles) {
     particle.x += particle.vx * dt;
@@ -318,7 +535,7 @@ function moveParticles(state: GameState, dt: number): void {
   state.particles = state.particles.filter((particle) => particle.life > 0);
 }
 
-function collide(state: GameState): void {
+function collide(state: GameState, dt: number): void {
   const deadEnemies = new Set<number>();
   const deadBullets = new Set<number>();
 
@@ -326,15 +543,42 @@ function collide(state: GameState): void {
     if (deadBullets.has(bullet.id)) continue;
     for (const enemy of state.enemies) {
       if (deadEnemies.has(enemy.id)) continue;
-      if (hits(bullet.x, bullet.y, bullet.r, enemy.x, enemy.y, enemy.r)) {
-        deadBullets.add(bullet.id);
-        deadEnemies.add(enemy.id);
-        state.score += enemy.score;
-        burst(state, enemy.x, enemy.y, enemy.kind === 'asteroid' ? '#E6D2A8' : '#FF8CC8', 12);
-        break;
-      }
+      if (!hits(bullet.x, bullet.y, bullet.r, enemy.x, enemy.y, enemy.r)) continue;
+      deadBullets.add(bullet.id);
+      hurt(state, enemy, BULLET_DAMAGE, deadEnemies, true);
+      break;
     }
   }
+
+  if (state.laserTimer > 0) {
+    const nose = beamNose(state);
+    const reach = 1600;
+    const x2 = nose.x + Math.cos(state.laserAngle) * reach;
+    const y2 = nose.y + Math.sin(state.laserAngle) * reach;
+    for (const enemy of state.enemies) {
+      if (deadEnemies.has(enemy.id)) continue;
+      const distance = pointSegmentDistance(enemy.x, enemy.y, nose.x, nose.y, x2, y2);
+      if (distance <= enemy.r + 8) hurt(state, enemy, LASER_DPS * dt, deadEnemies, false);
+    }
+  }
+
+  const blast = state.blast;
+  if (blast && blast.age <= BOMB_BLAST_TIME) {
+    const radius = blast.maxRadius * easeOut(clamp(blast.age / BOMB_BLAST_TIME, 0, 1));
+    for (const enemy of state.enemies) {
+      if (deadEnemies.has(enemy.id) || blast.hit.includes(enemy.id)) continue;
+      if (!hits(blast.x, blast.y, radius, enemy.x, enemy.y, enemy.r)) continue;
+      blast.hit.push(enemy.id);
+      hurt(state, enemy, BOMB_DAMAGE, deadEnemies, false);
+    }
+  }
+
+  for (const pickup of state.pickups) {
+    if (!hits(pickup.x, pickup.y, pickup.r, state.shipX, state.shipY, SHIP_HIT_RADIUS + 6)) continue;
+    if (!collect(state, pickup)) continue;
+    pickup.y = state.height + 999;
+  }
+  state.pickups = state.pickups.filter((pickup) => pickup.y < state.height + 40);
 
   let hitPlayer = false;
   for (const enemy of state.enemies) {
@@ -363,6 +607,62 @@ function collide(state: GameState): void {
   if (deadEnemies.size > 0) {
     state.enemies = state.enemies.filter((enemy) => !deadEnemies.has(enemy.id));
   }
+}
+
+function hurt(state: GameState, enemy: Enemy, amount: number, dead: Set<number>, chip: boolean): void {
+  enemy.hp -= amount;
+  if (enemy.hp > 0) {
+    if (chip) burst(state, enemy.x, enemy.y, '#FFFFFF', 2);
+    return;
+  }
+  dead.add(enemy.id);
+  state.score += enemy.score;
+  explode(state, enemy.x, enemy.y, enemy.shape === 'cruiser' ? '#FFD36A' : '#FF8CC8');
+}
+
+function collect(state: GameState, pickup: Pickup): boolean {
+  if (pickup.kind === 'ammo') {
+    state.ammo += pickup.amount;
+    burst(state, pickup.x, pickup.y, '#7EF0FF', 10);
+    return true;
+  }
+  if (state.inventory.length >= MAX_INVENTORY) return false;
+  state.inventory.push(pickup.kind);
+  burst(state, pickup.x, pickup.y, pickup.kind === 'laser' ? '#FF4A2A' : '#FFE7B0', 8);
+  return true;
+}
+
+function explode(state: GameState, x: number, y: number, color: string): void {
+  burst(state, x, y, color, 14);
+  burst(state, x, y, '#FFF6D8', 6);
+  for (let i = 0; i < 7; i += 1) {
+    const angle = state.rng.next() * Math.PI * 2;
+    const speed = 30 + state.rng.next() * 90;
+    pushParticle(state, {
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.45 + state.rng.next() * 0.35,
+      maxLife: 0.8,
+      r: 2.2 + state.rng.next() * 2.2,
+      color: state.rng.next() > 0.5 ? '#8A7564' : '#C4B4A4',
+    });
+  }
+  pushParticle(state, {
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    life: 0.14,
+    maxLife: 0.14,
+    r: 22,
+    color: '#FFF8E8',
+  });
+}
+
+export function beamNose(state: GameState): { x: number; y: number } {
+  return { x: state.shipX, y: state.shipY - 24 };
 }
 
 function burst(state: GameState, x: number, y: number, color: string, count: number): void {
@@ -426,10 +726,48 @@ function hits(ax: number, ay: number, ar: number, bx: number, by: number, br: nu
   return dx * dx + dy * dy <= reach * reach;
 }
 
+function pointSegmentDistance(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = dx * dx + dy * dy;
+  const t = len === 0 ? 0 : clamp(((px - x1) * dx + (py - y1) * dy) / len, 0, 1);
+  const x = x1 + dx * t;
+  const y = y1 + dy * t;
+  return Math.hypot(px - x, py - y);
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function easeOut(t: number): number {
+  return 1 - (1 - t) * (1 - t);
+}
+
+export function inventorySlots(
+  _width: number,
+  height: number,
+  bottomInset: number,
+  count: number,
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const size = 56;
+  const gap = 8;
+  const y = height - bottomInset - 18 - size;
+  return Array.from({ length: count }, (_, index) => ({
+    x: 14 + index * (size + gap),
+    y,
+    w: size,
+    h: size,
+  }));
 }
