@@ -1,4 +1,5 @@
 import type { Controls } from '../game/controls';
+import { classifyTouch } from './touchUi';
 
 const GAME_KEYS = new Set([
   'ArrowLeft',
@@ -38,15 +39,20 @@ export function bindControls(
       if (!uiNode(event.target) && event.cancelable) event.preventDefault();
       return;
     }
-    if (uiNode(event.target)) return;
-    if (event.cancelable) event.preventDefault();
+    const onUi = uiNode(event.target);
     const ship = getShip();
     let play = false;
+    let cancel = !onUi;
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
-      if (controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y) === 'play') play = true;
+      const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
+      const decision = classifyTouch(onUi, role);
+      if (decision.dropPlayPointer) controls.pointerUp(touch.identifier);
+      if (decision.play) play = true;
+      if (!decision.cancel) cancel = false;
     }
     if (play) onPress();
+    if (cancel && event.cancelable) event.preventDefault();
   };
 
   const onTouchMove = (event: TouchEvent) => {
@@ -60,8 +66,10 @@ export function bindControls(
   };
 
   const onTouchEnd = (event: TouchEvent) => {
+    // Cancelling touchend suppresses the click mobile browsers send to a button.
+    const onUi = uiNode(event.target);
+    if (!isUiOpen() && !onUi && event.cancelable) event.preventDefault();
     if (isUiOpen()) return;
-    if (event.cancelable) event.preventDefault();
     for (const touch of Array.from(event.changedTouches)) controls.pointerUp(touch.identifier);
   };
 
