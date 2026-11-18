@@ -181,17 +181,17 @@ describe('simulation', () => {
 
   it('chips health instead of destroying a tough enemy in one hit', () => {
     const state = playing();
-    state.enemies.push(makeEnemy({ id: 1, x: 80, y: 80, r: 20, hp: 50, maxHp: 50, score: 50 }));
+    state.enemies.push(makeEnemy({ id: 1, x: 80, y: 80, r: 20, hp: 10, maxHp: 10, score: 100 }));
     state.bullets.push({ id: 2, x: 80, y: 80, vx: 0, vy: -100, r: 6 });
     step(state, idleIntent(), 0.016);
     assert.equal(state.enemies.length, 1);
-    assert.equal(state.enemies[0].hp, 49);
+    assert.equal(state.enemies[0].hp, 9);
     assert.equal(state.score, 0);
     state.enemies[0].hp = 1;
     state.bullets.push({ id: 3, x: 80, y: state.enemies[0].y, vx: 0, vy: 0, r: 8 });
     step(state, idleIntent(), 0.016);
     assert.equal(state.enemies.length, 0);
-    assert.equal(state.score, 50);
+    assert.equal(state.score, 100);
   });
 
   it('collects an ammo box by flying into it', () => {
@@ -243,8 +243,8 @@ describe('simulation', () => {
   it('arms a bomb from the button and damages only enemies inside the blast', () => {
     const state = playing();
     state.inventory = ['bomb'];
-    state.enemies.push(makeEnemy({ id: 1, x: state.shipX, y: state.shipY - 140, r: 16, hp: 200, maxHp: 200, score: 200, vy: 0 }));
-    state.enemies.push(makeEnemy({ id: 2, x: 20, y: 30, r: 10, hp: 50, maxHp: 50, score: 50, vy: 0 }));
+    state.enemies.push(makeEnemy({ id: 1, x: state.shipX, y: state.shipY - 140, r: 16, hp: 15, maxHp: 15, score: 200, vy: 0 }));
+    state.enemies.push(makeEnemy({ id: 2, x: 20, y: 30, r: 10, hp: 5, maxHp: 5, score: 50, vy: 0 }));
     step(state, idleIntent({ activateSlot: 0 }), 0.016);
     assert.deepEqual(state.inventory, []);
     assert.ok(state.bomb);
@@ -263,15 +263,15 @@ describe('simulation', () => {
     state.laserAngle = -Math.PI / 2;
     state.shipX = 200;
     state.shipY = 500;
-    state.enemies.push(makeEnemy({ id: 1, x: 200, y: 300, r: 16, hp: 50, maxHp: 50 }));
-    state.enemies.push(makeEnemy({ id: 2, x: 40, y: 300, r: 16, hp: 50, maxHp: 50 }));
+    state.enemies.push(makeEnemy({ id: 1, x: 200, y: 300, r: 16, hp: 10, maxHp: 10 }));
+    state.enemies.push(makeEnemy({ id: 2, x: 40, y: 300, r: 16, hp: 10, maxHp: 10 }));
     step(state, idleIntent({ firing: true }), 0.05);
     const above = state.enemies.find((enemy) => enemy.id === 1);
     const beside = state.enemies.find((enemy) => enemy.id === 2);
     assert.ok(above);
     assert.ok(beside);
-    assert.ok(above.hp < 50 - LASER_DPS * 0.04);
-    assert.equal(beside.hp, 50);
+    assert.ok(above.hp < 10 - LASER_DPS * 0.04);
+    assert.equal(beside.hp, 10);
     assert.equal(state.ammo, START_AMMO);
     assert.equal(state.shotsFired, 0);
   });
