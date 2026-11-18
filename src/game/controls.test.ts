@@ -124,6 +124,29 @@ describe('two-finger controls', () => {
     assert.equal(controls.moveId, 2);
   });
 
+  it('lets the settings gear swallow a touch without steering or firing', () => {
+    const controls = new Controls();
+    controls.setChromeRects([{ x: 300, y: 20, w: 44, h: 44 }]);
+    assert.equal(controls.pointerDown(1, 320, 40, 100, 500), 'chrome');
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.fireId, null);
+    assert.equal(controls.consumeChrome(), true);
+    assert.equal(controls.consumeChrome(), false);
+    controls.pointerDown(2, 20, 400, 100, 500);
+    assert.equal(controls.moveId, 2);
+    assert.equal(controls.fireId, null);
+  });
+
+  it('prefers a power-up slot when it overlaps the settings gear', () => {
+    const controls = new Controls();
+    controls.setInventoryRects([{ x: 300, y: 20, w: 56, h: 56 }]);
+    controls.setChromeRects([{ x: 300, y: 20, w: 44, h: 44 }]);
+    assert.equal(controls.pointerDown(1, 320, 40, 0, 0), 'power');
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.consumeChrome(), false);
+    assert.equal(controls.moveId, null);
+  });
+
   it('reports how far the firing finger has dragged', () => {
     const controls = new Controls();
     controls.pointerDown(1, 10, 10, 0, 0);

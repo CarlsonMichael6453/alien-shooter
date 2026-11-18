@@ -17,11 +17,16 @@ const GAME_KEYS = new Set([
   'Digit3',
 ]);
 
+function uiNode(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-alien-ui]') != null;
+}
+
 export function bindControls(
   element: HTMLElement,
   controls: Controls,
   getShip: () => { x: number; y: number },
   onPress: () => void,
+  isUiOpen: () => boolean = () => false,
 ): () => void {
   const local = (clientX: number, clientY: number) => {
     const rect = element.getBoundingClientRect();
@@ -29,16 +34,23 @@ export function bindControls(
   };
 
   const onTouchStart = (event: TouchEvent) => {
+    if (isUiOpen()) {
+      if (!uiNode(event.target) && event.cancelable) event.preventDefault();
+      return;
+    }
+    if (uiNode(event.target)) return;
     if (event.cancelable) event.preventDefault();
     const ship = getShip();
+    let play = false;
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
-      controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
+      if (controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y) === 'play') play = true;
     }
-    onPress();
+    if (play) onPress();
   };
 
   const onTouchMove = (event: TouchEvent) => {
+    if (isUiOpen()) return;
     if (event.cancelable) event.preventDefault();
     const touches = event.changedTouches.length > 0 ? event.changedTouches : event.touches;
     for (const touch of Array.from(touches)) {
@@ -48,21 +60,22 @@ export function bindControls(
   };
 
   const onTouchEnd = (event: TouchEvent) => {
+    if (isUiOpen()) return;
     if (event.cancelable) event.preventDefault();
     for (const touch of Array.from(event.changedTouches)) controls.pointerUp(touch.identifier);
   };
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse') return;
+    if (isUiOpen() || uiNode(event.target)) return;
     if (event.cancelable) event.preventDefault();
     const point = local(event.clientX, event.clientY);
     const ship = getShip();
-    controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y);
-    onPress();
+    if (controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y) === 'play') onPress();
   };
 
   const onPointerMove = (event: PointerEvent) => {
-    if (event.pointerType !== 'mouse') return;
+    if (event.pointerType !== 'mouse' || isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
     controls.hover(point.x, point.y);
     if ((event.buttons & 1) === 0 && (event.buttons & 2) === 0) return;
@@ -70,11 +83,12 @@ export function bindControls(
   };
 
   const onPointerUp = (event: PointerEvent) => {
-    if (event.pointerType !== 'mouse') return;
+    if (event.pointerType !== 'mouse' || isUiOpen()) return;
     controls.mouseUp(event.button);
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (isUiOpen()) return;
     if (!GAME_KEYS.has(event.code)) return;
     event.preventDefault();
     if (event.repeat) return;
@@ -83,6 +97,7 @@ export function bindControls(
   };
 
   const onKeyUp = (event: KeyboardEvent) => {
+    if (isUiOpen()) return;
     if (!GAME_KEYS.has(event.code)) return;
     controls.keyUp(event.code);
   };
