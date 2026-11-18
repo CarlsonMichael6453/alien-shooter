@@ -2,7 +2,11 @@ export type Mode = 'ready' | 'playing' | 'over';
 
 export type EnemyKind = 'alien' | 'asteroid';
 
-export type EnemyShape = 'saucer' | 'dart' | 'rock';
+export type EnemyShape = 'saucer' | 'dart' | 'rock' | 'cruiser';
+
+export type PickupKind = 'ammo' | 'rapid' | 'bomb' | 'laser';
+
+export type PowerKind = 'rapid' | 'bomb' | 'laser';
 
 export interface Enemy {
   id: number;
@@ -21,14 +25,44 @@ export interface Enemy {
   wobbleFreq: number;
   tint: number;
   score: number;
+  hp: number;
+  maxHp: number;
 }
 
 export interface Bullet {
   id: number;
   x: number;
   y: number;
+  vx: number;
   vy: number;
   r: number;
+}
+
+export interface Pickup {
+  id: number;
+  kind: PickupKind;
+  amount: number;
+  x: number;
+  y: number;
+  vy: number;
+  r: number;
+  spin: number;
+}
+
+export interface Bomb {
+  x: number;
+  y: number;
+  vy: number;
+  age: number;
+  pulse: number;
+}
+
+export interface Blast {
+  x: number;
+  y: number;
+  age: number;
+  maxRadius: number;
+  hit: number[];
 }
 
 export interface Particle {
@@ -74,11 +108,24 @@ export interface GameState {
   shotsFired: number;
   /** Seconds spent on the game-over card. Restarts are ignored until this passes a short lock. */
   overTimer: number;
+  ammo: number;
+  inventory: PowerKind[];
+  rapidTimer: number;
+  laserTimer: number;
+  laserAngle: number;
+  spark: number;
+  /** When true the simulation is frozen so a frame can be inspected. */
+  hold: boolean;
   nextId: number;
   bullets: Bullet[];
   enemies: Enemy[];
+  pickups: Pickup[];
+  bomb: Bomb | null;
+  blast: Blast | null;
   particles: Particle[];
   stars: Star[];
+  ammoCooldown: number;
+  powerCooldown: number;
   rng: Rng;
 }
 
@@ -96,4 +143,10 @@ export interface Intent {
   keyY: number;
   start: boolean;
   restart: boolean;
+  activateSlot: number | null;
+  fireDragX: number;
+  fireDragY: number;
+  hoverActive: boolean;
+  hoverX: number;
+  hoverY: number;
 }

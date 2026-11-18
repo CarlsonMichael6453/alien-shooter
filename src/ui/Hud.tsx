@@ -1,12 +1,17 @@
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import type { Mode } from '../game/types';
+import type { Mode, PowerKind } from '../game/types';
 
 export interface HudModel {
   mode: Mode;
   score: number;
   best: number;
   lives: number;
-  hint: boolean;
+  ammo: number;
+  inventory: PowerKind[];
+  powerOn: boolean;
+  rapidTimer: number;
+  laserTimer: number;
+  hint: string | null;
 }
 
 interface Props {
@@ -24,21 +29,39 @@ export function Overlay({ model, top, bottom, finePointer }: Props) {
           <View>
             <Text style={styles.label}>SCORE</Text>
             <Text style={styles.score}>{formatScore(model.score)}</Text>
+            <Text style={[styles.ammoLabel, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 30 ? styles.ammoLow : null]}>
+              AMMO
+            </Text>
+            <Text style={[styles.ammo, model.ammo === 0 ? styles.ammoEmpty : model.ammo <= 30 ? styles.ammoLow : null]}>
+              {formatScore(model.ammo)}
+            </Text>
           </View>
-          <View style={styles.lives}>
-            {Array.from({ length: 3 }, (_, index) => (
-              <Text key={index} style={[styles.life, index < model.lives ? styles.lifeOn : styles.lifeOff]}>
-                ▲
-              </Text>
-            ))}
+          <View style={styles.side}>
+            <View style={styles.lives}>
+              {Array.from({ length: 3 }, (_, index) => (
+                <Text key={index} style={[styles.life, index < model.lives ? styles.lifeOn : styles.lifeOff]}>
+                  ▲
+                </Text>
+              ))}
+            </View>
+            {model.rapidTimer > 0 ? <Text style={styles.timer}>RAPID {model.rapidTimer.toFixed(1)}</Text> : null}
+            {model.laserTimer > 0 ? <Text style={styles.timerLaser}>LASER {model.laserTimer.toFixed(1)}</Text> : null}
           </View>
         </View>
       ) : null}
 
+      {model.mode === 'playing' && model.inventory.length > 0 ? (
+        <View style={[styles.inventory, { bottom: bottom + 18 }, model.powerOn ? styles.inventoryLocked : null]}>
+          {model.inventory.map((kind, index) => (
+            <View key={`${kind}-${index}`} style={styles.slot}>
+              <PowerGlyph kind={kind} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {model.mode === 'playing' && model.hint ? (
-        <Text style={[styles.hint, { bottom: bottom + 28 }]}>
-          {finePointer ? 'Hold Space to fire' : 'Hold a second finger to fire'}
-        </Text>
+        <Text style={[styles.hint, { bottom: bottom + (model.inventory.length > 0 ? 92 : 28) }]}>{model.hint}</Text>
       ) : null}
 
       {model.mode === 'ready' ? (
@@ -49,7 +72,9 @@ export function Overlay({ model, top, bottom, finePointer }: Props) {
             <Text style={styles.body}>Drag one finger to move the ship. It follows the drag, so your thumb never covers it.</Text>
             <Text style={styles.body}>Hold a second finger anywhere to fire upward. Lift it to stop.</Text>
             {finePointer ? (
-              <Text style={styles.desktop}>Keyboard: WASD or arrows to move, hold Space to fire. Or drag with the mouse.</Text>
+              <Text style={styles.desktop}>
+                WASD moves, Space fires. Tap a bottom-left icon, or press 1, 2, or 3. Point the mouse to aim the laser.
+              </Text>
             ) : null}
             <Text style={styles.cta}>TAP TO START</Text>
           </View>
@@ -67,6 +92,37 @@ export function Overlay({ model, top, bottom, finePointer }: Props) {
           </View>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function PowerGlyph({ kind }: { kind: PowerKind }) {
+  if (kind === 'rapid') {
+    return (
+      <View style={styles.glyph}>
+        <View style={[styles.streak, { transform: [{ rotate: '-24deg' }] }]} />
+        <View style={[styles.streak, { transform: [{ rotate: '-8deg' }] }]} />
+        <View style={[styles.streak, { transform: [{ rotate: '8deg' }] }]} />
+        <View style={[styles.streak, { transform: [{ rotate: '24deg' }] }]} />
+      </View>
+    );
+  }
+  if (kind === 'bomb') {
+    return (
+      <View style={styles.glyph}>
+        <View style={styles.stemShade} />
+        <View style={styles.stemHot} />
+        <View style={styles.lobeL} />
+        <View style={styles.lobeR} />
+        <View style={styles.lobeC} />
+        <View style={styles.lobeHot} />
+        <View style={styles.ash} />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.glyph}>
+      <View style={styles.beam} />
     </View>
   );
 }
@@ -108,10 +164,148 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
+  ammoLabel: {
+    color: '#9BB0C9',
+    fontFamily: font,
+    fontSize: 11,
+    letterSpacing: 2,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  ammo: {
+    color: '#F4FBFF',
+    fontFamily: font,
+    fontSize: 26,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  ammoLow: {
+    color: '#FFB020',
+  },
+  ammoEmpty: {
+    color: '#FF5D7A',
+  },
+  side: {
+    alignItems: 'flex-end',
+  },
   lives: {
     flexDirection: 'row',
     gap: 4,
     marginTop: 16,
+  },
+  timer: {
+    color: '#D6F6FF',
+    fontFamily: font,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginTop: 6,
+  },
+  timerLaser: {
+    color: '#FFB089',
+    fontFamily: font,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginTop: 4,
+  },
+  inventory: {
+    position: 'absolute',
+    left: 14,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inventoryLocked: {
+    opacity: 0.38,
+  },
+  slot: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(8, 14, 28, 0.88)',
+    borderWidth: 2,
+    borderColor: 'rgba(232, 244, 255, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glyph: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streak: {
+    position: 'absolute',
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: '#F4FEFF',
+    top: 2,
+  },
+  stemShade: {
+    position: 'absolute',
+    top: 12,
+    width: 8,
+    height: 13,
+    borderRadius: 3,
+    backgroundColor: '#4A342C',
+  },
+  stemHot: {
+    position: 'absolute',
+    top: 13,
+    width: 3,
+    height: 11,
+    borderRadius: 2,
+    backgroundColor: '#E25820',
+  },
+  lobeL: {
+    position: 'absolute',
+    top: 6,
+    left: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#6A3424',
+  },
+  lobeR: {
+    position: 'absolute',
+    top: 7,
+    right: 2,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#8A3A22',
+  },
+  lobeC: {
+    position: 'absolute',
+    top: 2,
+    width: 14,
+    height: 12,
+    borderRadius: 7,
+    backgroundColor: '#D04A1C',
+  },
+  lobeHot: {
+    position: 'absolute',
+    top: 3,
+    width: 7,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#FFE0A4',
+  },
+  ash: {
+    position: 'absolute',
+    top: 5,
+    left: 1,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2A1C18',
+  },
+  beam: {
+    width: 7,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: '#FF5A2A',
   },
   life: {
     fontSize: 16,

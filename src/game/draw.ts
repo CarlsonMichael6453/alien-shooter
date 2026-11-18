@@ -1,22 +1,25 @@
-import type { Enemy, GameState } from '../game/types';
+import { beamNose } from './logic';
+import type { Enemy, GameState, Pickup } from './types';
 import type { Painter } from '../render/painter';
 
-const BG = ['#07111F', '#1A0C24', '#10182E'] as const;
+const BG = ['#03060E', '#0A1022', '#120818', '#070B16'] as const;
 
 export function paintGame(painter: Painter, state: GameState): void {
   const { width: w, height: h } = state;
   painter.fillVerticalGradient(0, 0, w, h, BG);
-
-  painter.fillEllipse(w * 0.22, h * 0.28, w * 0.42, h * 0.16, 'rgba(108,43,217,0.16)');
-  painter.fillEllipse(w * 0.78, h * 0.48, w * 0.4, h * 0.14, 'rgba(196,59,120,0.12)');
-  painter.fillEllipse(w * 0.48, h * 0.78, w * 0.5, h * 0.12, 'rgba(27,108,255,0.10)');
+  drawSpace(painter, state);
 
   for (const star of state.stars) {
+    if (star.speed > 0.045) continue;
+    painter.fillCircle(star.x * w, ((star.y * h + state.time * 6) % h), star.size * 0.7, rgba('#9BB0C9', star.alpha * 0.45));
+  }
+  for (const star of state.stars) {
+    if (star.speed <= 0.045) continue;
     painter.fillCircle(
       star.x * w,
       star.y * h,
       star.size,
-      rgba(star.warm ? '#FFD7A8' : '#EAF3FF', star.alpha),
+      rgba(star.warm ? '#FFE0B8' : '#F4FBFF', star.alpha),
     );
   }
 
@@ -33,13 +36,19 @@ export function paintGame(painter: Painter, state: GameState): void {
     painter.fillCircle(particle.x, particle.y, particle.r, rgba(particle.color, alpha));
   }
 
-  const ordered = state.enemies.slice().sort((a, b) => b.r - a.r);
-  for (const enemy of ordered) drawEnemy(painter, enemy);
+  for (const pickup of state.pickups) drawPickup(painter, pickup, state.time);
 
-  for (const bullet of state.bullets) {
-    painter.fillCircle(bullet.x, bullet.y - 8, 6, 'rgba(126,240,255,0.35)');
-    painter.fillRoundRect(bullet.x - 2, bullet.y - 14, 4, 18, 2, '#F4FEFF');
+  const ordered = state.enemies.slice().sort((a, b) => b.r - a.r);
+  for (const enemy of ordered) {
+    drawEnemy(painter, enemy);
+    drawHealth(painter, enemy);
   }
+
+  if (state.bomb) drawBomb(painter, state.bomb);
+  if (state.laserTimer > 0) drawLaser(painter, state);
+  if (state.blast && state.blast.age <= 1.7) drawBlast(painter, state.blast);
+
+  for (const bullet of state.bullets) drawBullet(painter, bullet);
 
   drawShip(painter, state);
   painter.restore();
@@ -57,6 +66,32 @@ export function paintGame(painter: Painter, state: GameState): void {
   ]);
 }
 
+function drawSpace(painter: Painter, state: GameState): void {
+  const { width: w, height: h, time } = state;
+  const dust = (time * 12) % h;
+  painter.fillEllipse(w * 0.2, (h * 0.3 + dust * 0.15) % h, w * 0.46, h * 0.18, 'rgba(88, 48, 150, 0.16)');
+  painter.fillEllipse(w * 0.72, (h * 0.58 + dust * 0.08) % h, w * 0.38, h * 0.14, 'rgba(150, 50, 90, 0.12)');
+  painter.fillEllipse(w * 0.48, h * 0.82, w * 0.55, h * 0.1, 'rgba(30, 70, 140, 0.12)');
+  painter.fillEllipse(w * 0.5, h * 0.5, w * 0.9, 18, 'rgba(180, 190, 220, 0.04)');
+  drawPlanet(painter, w * 0.82, h * 0.18, 26, '#6E5A48', '#3E3228', true);
+  drawPlanet(painter, w * 0.14, h * 0.7, 15, '#31465C', '#1C2A38', false);
+}
+
+function drawPlanet(
+  painter: Painter,
+  x: number,
+  y: number,
+  radius: number,
+  body: string,
+  shade: string,
+  ring: boolean,
+): void {
+  if (ring) painter.fillEllipse(x, y, radius * 1.7, radius * 0.28, 'rgba(210, 196, 170, 0.28)');
+  painter.fillCircle(x, y, radius, body);
+  painter.fillCircle(x - radius * 0.28, y - radius * 0.22, radius * 0.72, shade);
+  painter.fillCircle(x - radius * 0.45, y - radius * 0.4, radius * 0.18, 'rgba(255,255,255,0.18)');
+}
+
 function drawShip(painter: Painter, state: GameState): void {
   const blink = state.invuln > 0 && Math.sin(state.invuln * 28) < 0;
   painter.save();
@@ -64,7 +99,8 @@ function drawShip(painter: Painter, state: GameState): void {
   if (blink) {
     painter.fillCircle(0, 2, 22, 'rgba(126,240,255,0.12)');
   }
-  painter.fillCircle(0, 6, 20, 'rgba(46,230,255,0.16)');
+  painter.fillEllipse(0, 18, 16, 10, 'rgba(255, 140, 40, 0.35)');
+  painter.fillCircle(0, 4, 22, 'rgba(80, 210, 255, 0.14)');
   painter.fillPolygon(
     [
       [-26, 8],
@@ -101,6 +137,26 @@ function drawShip(painter: Painter, state: GameState): void {
     ],
     blink ? 'rgba(126,240,255,0.35)' : '#7EF0FF',
   );
+  painter.fillPolygon(
+    [
+      [-7, 6],
+      [-2, 8],
+      [-2, 14],
+      [-8, 12],
+    ],
+    '#0E3E66',
+  );
+  painter.fillPolygon(
+    [
+      [7, 6],
+      [2, 8],
+      [2, 14],
+      [8, 12],
+    ],
+    '#0E3E66',
+  );
+  painter.fillCircle(-20, 10, 2.2, '#7EF0FF');
+  painter.fillCircle(20, 10, 2.2, '#7EF0FF');
   painter.fillCircle(0, -2, 4.2, '#072033');
   painter.fillCircle(-1.2, -3.4, 1.5, 'rgba(184,246,255,0.95)');
 
@@ -131,10 +187,290 @@ function drawShip(painter: Painter, state: GameState): void {
   painter.restore();
 }
 
+function drawBullet(
+  painter: Painter,
+  bullet: { x: number; y: number; vx: number; vy: number },
+): void {
+  const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
+  const ux = bullet.vx / speed;
+  const uy = bullet.vy / speed;
+  const px = -uy;
+  const py = ux;
+  painter.fillPolygon(
+    [
+      [bullet.x + px * 2.2, bullet.y + py * 2.2],
+      [bullet.x - px * 2.2, bullet.y - py * 2.2],
+      [bullet.x - ux * 14 - px * 1.2, bullet.y - uy * 14 - py * 1.2],
+      [bullet.x - ux * 14 + px * 1.2, bullet.y - uy * 14 + py * 1.2],
+    ],
+    '#F4FEFF',
+  );
+  painter.fillCircle(bullet.x, bullet.y, 9, 'rgba(126,240,255,0.28)');
+  painter.fillCircle(bullet.x, bullet.y, 4.2, '#F4FEFF');
+}
+
+function drawHealth(painter: Painter, enemy: Enemy): void {
+  if (enemy.maxHp <= 1) return;
+  const width = Math.max(22, enemy.r * 1.7);
+  const x = enemy.x - width / 2;
+  const y = enemy.y - enemy.r - 12;
+  const ratio = clamp01(enemy.hp / enemy.maxHp);
+  painter.fillRoundRect(x, y, width, 5, 2, 'rgba(5,8,16,0.75)');
+  const color = ratio > 0.55 ? '#7DFFB2' : ratio > 0.28 ? '#FFD36A' : '#FF5D7A';
+  if (ratio > 0) painter.fillRoundRect(x, y, Math.max(3, width * ratio), 5, 2, color);
+}
+
+function drawPickup(painter: Painter, pickup: Pickup, time: number): void {
+  painter.save();
+  painter.translate(pickup.x, pickup.y);
+  const bob = Math.sin(time * 4 + pickup.spin) * 2;
+  painter.translate(0, bob);
+  if (pickup.kind === 'ammo') drawAmmoIcon(painter, pickup.amount);
+  else if (pickup.kind === 'rapid') drawRapidIcon(painter);
+  else if (pickup.kind === 'bomb') drawMushroomIcon(painter);
+  else drawLaserIcon(painter);
+  painter.restore();
+}
+
+function drawAmmoIcon(painter: Painter, amount: number): void {
+  painter.fillRoundRect(-20, -16, 40, 32, 8, '#12344A');
+  painter.strokeCircle(0, 0, 22, 'rgba(126,240,255,0.9)', 2);
+  drawDigits(painter, String(amount), 0, 1, 2.3, '#E8FBFF');
+}
+
+function drawRapidIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#102033');
+  painter.strokeCircle(0, 0, 20, '#D6F6FF', 2);
+  for (const tilt of [-0.62, -0.22, 0.22, 0.62]) {
+    painter.save();
+    painter.rotate(tilt);
+    painter.fillRoundRect(-1.3, -17, 2.6, 9, 1.3, '#F4FEFF');
+    painter.fillCircle(0, -17, 1.7, '#F4FEFF');
+    painter.restore();
+  }
+}
+
+function drawMushroomIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#140E0C');
+  painter.strokeCircle(0, 0, 20, '#A84820', 1.5);
+  drawMushroomCloud(painter, 1, 0);
+}
+
+function drawLaserIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#2A0C0C');
+  painter.strokeCircle(0, 0, 20, '#FF4A2A', 2);
+  painter.fillRoundRect(-5, -14, 10, 26, 4, '#FF6A22');
+  painter.fillRoundRect(-2.2, -14, 4.4, 26, 2, '#FFE08A');
+}
+
+function drawBomb(painter: Painter, bomb: { x: number; y: number; age: number; pulse: number }): void {
+  const secondsLeft = Math.max(1, 3 - Math.floor(bomb.age));
+  const scale = 1 + bomb.pulse * 0.28;
+  painter.save();
+  painter.translate(bomb.x, bomb.y);
+  painter.fillCircle(0, 0, 16 * scale, 'rgba(255,140,40,0.28)');
+  painter.fillCircle(0, 0, 9, '#FFB020');
+  painter.fillCircle(0, 0, 4, '#FFF6D8');
+  drawDigits(painter, String(secondsLeft), 0, 18, 2.1, '#FFE7B0');
+  painter.restore();
+}
+
+function drawMushroomCloud(painter: Painter, scale: number, time: number): void {
+  const sway = Math.sin(time * 6) * 0.6 * scale;
+  painter.fillPolygon(
+    [
+      [-2.4 * scale, 9 * scale],
+      [2.2 * scale, 9 * scale],
+      [4.4 * scale + sway, -1 * scale],
+      [-4.6 * scale + sway, -1 * scale],
+    ],
+    '#4A382F',
+  );
+  painter.fillPolygon(
+    [
+      [-1.1 * scale, 8 * scale],
+      [1.2 * scale, 8 * scale],
+      [1.8 * scale + sway * 0.4, 0],
+      [-1.5 * scale + sway * 0.4, 0],
+    ],
+    '#E26A28',
+  );
+  painter.fillEllipse(sway, -1.5 * scale, 10.5 * scale, 3.6 * scale, '#3A241C');
+  painter.fillCircle(-6.2 * scale + sway, -4.2 * scale, 5 * scale, '#5C3428');
+  painter.fillCircle(6.4 * scale + sway, -3.6 * scale, 4.8 * scale, '#7A3A2A');
+  painter.fillCircle(sway * 0.3, -7.2 * scale, 6 * scale, '#C44A22');
+  painter.fillCircle(-3.2 * scale + sway, -8.4 * scale, 3.8 * scale, '#E07030');
+  painter.fillCircle(3 * scale + sway, -9 * scale, 3.1 * scale, '#F09A48');
+  painter.fillEllipse(sway * 0.2, -7 * scale, 2.8 * scale, 1.8 * scale, '#FFE4B0');
+  painter.fillCircle(-8 * scale + sway, -6 * scale, 2.1 * scale, 'rgba(28,22,20,0.9)');
+  painter.fillCircle(8.2 * scale + sway, -5.2 * scale, 1.8 * scale, 'rgba(46,32,28,0.85)');
+}
+
+function drawBlast(
+  painter: Painter,
+  blast: { x: number; y: number; age: number; maxRadius: number },
+): void {
+  const age = blast.age;
+  const grow = clamp01(age / 0.5);
+  const radius = blast.maxRadius * (1 - (1 - grow) * (1 - grow));
+  const fade = clamp01(1 - Math.max(0, age - 0.4) / 1.15);
+  const flash = clamp01(1 - age / 0.11);
+  const ring = blast.maxRadius * Math.min(1.05, age / 0.38);
+
+  painter.strokeCircle(blast.x, blast.y, Math.max(4, ring), rgba('#FFF0D2', 0.7 * clamp01(1 - age / 0.62)), 3.5);
+  painter.strokeCircle(blast.x, blast.y, Math.max(2, ring * 0.86), rgba('#FFB060', 0.35 * clamp01(1 - age / 0.5)), 8);
+
+  for (let i = 0; i < 9; i += 1) {
+    const angle = (i / 9) * Math.PI * 2 + age * 0.8;
+    const wobble = 0.7 + Math.sin(age * 11 + i * 1.7) * 0.22;
+    const reach = radius * (0.62 + (i % 3) * 0.08);
+    painter.fillCircle(
+      blast.x + Math.cos(angle) * reach,
+      blast.y + Math.sin(angle) * reach * 0.92,
+      radius * (0.28 + (i % 2) * 0.08) * wobble,
+      rgba(i % 2 === 0 ? '#241816' : '#5A301C', 0.55 * fade),
+    );
+  }
+
+  painter.fillCircle(blast.x, blast.y, radius * 0.9, rgba('#B43210', 0.4 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.58, rgba('#FF6A18', 0.5 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.32, rgba('#FFC56A', 0.62 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.14, rgba('#FFF8E8', 0.8 * fade));
+  if (flash > 0) painter.fillCircle(blast.x, blast.y, radius * 0.45 + 24, rgba('#FFFFFF', 0.72 * flash));
+
+  if (age > 0.28) {
+    const rise = (age - 0.28) * 120;
+    painter.save();
+    painter.translate(blast.x, blast.y - radius * 0.15 - rise);
+    drawMushroomCloud(painter, Math.max(1.8, radius / 56), age);
+    painter.restore();
+  }
+}
+
+function drawLaser(painter: Painter, state: GameState): void {
+  const nose = beamNose(state);
+  const angle = state.laserAngle;
+  const length = Math.max(state.width, state.height) * 1.4;
+  const flicker = 0.78 + Math.sin(state.time * 54) * 0.14 + Math.sin(state.time * 97) * 0.08;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const px = -dy;
+  const py = dx;
+  const tipX = nose.x + dx * length;
+  const tipY = nose.y + dy * length;
+  const band = (half: number, color: string, pinch = 0.65) => {
+    painter.fillPolygon(
+      [
+        [nose.x + px * half, nose.y + py * half],
+        [nose.x - px * half, nose.y - py * half],
+        [tipX - px * half * pinch, tipY - py * half * pinch],
+        [tipX + px * half * pinch, tipY + py * half * pinch],
+      ],
+      color,
+    );
+  };
+  const shimmer = Math.sin(state.time * 36) * 1.6;
+  band(15 * flicker, 'rgba(255,70,16,0.16)');
+  band(9 * flicker, 'rgba(255,52,18,0.55)');
+  painter.save();
+  painter.translate(px * shimmer, py * shimmer);
+  band(6.4 * flicker, 'rgba(255,90,24,0.78)', 0.55);
+  painter.restore();
+  band(3.1 * flicker, '#FFE7A8', 0.4);
+  band(1.35, '#FFFFFF', 0.28);
+
+  const steps = 9;
+  for (let i = 1; i <= steps; i += 1) {
+    const along = (i / steps) * Math.min(length, 460);
+    const wave = Math.sin(state.time * 22 + i * 1.4) * (2.4 + (i % 3));
+    const side = i % 2 === 0 ? 1 : -1;
+    const x = nose.x + dx * along + px * wave * side;
+    const y = nose.y + dy * along + py * wave * side;
+    painter.fillCircle(x, y, 2.4 + (i % 3) * 0.7, i % 2 === 0 ? 'rgba(255,120,30,0.75)' : 'rgba(255,220,140,0.55)');
+  }
+
+  painter.fillCircle(nose.x, nose.y, 16 * flicker, 'rgba(255,90,20,0.35)');
+  painter.fillCircle(nose.x, nose.y, 9 * flicker, 'rgba(255,190,90,0.8)');
+  painter.fillCircle(nose.x, nose.y, 4.2, '#FFFFFF');
+
+  for (const enemy of state.enemies) {
+    const distance = pointLineDistance(enemy.x, enemy.y, nose.x, nose.y, tipX, tipY);
+    if (distance > enemy.r + 10) continue;
+    const glow = 0.65 + Math.sin(state.time * 40 + enemy.id) * 0.35;
+    painter.fillCircle(enemy.x, enemy.y, enemy.r * 0.55, rgba('#2A120C', 0.45));
+    painter.fillCircle(enemy.x, enemy.y, 7 * glow, 'rgba(255,220,150,0.85)');
+    painter.fillCircle(enemy.x + px * 6, enemy.y + py * 6, 2.2, '#FFF8E8');
+  }
+}
+
+function pointLineDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = dx * dx + dy * dy;
+  const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len));
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+}
+
 function drawEnemy(painter: Painter, enemy: Enemy): void {
-  if (enemy.shape === 'rock') drawRock(painter, enemy);
+  if (enemy.shape === 'cruiser') drawCruiser(painter, enemy);
+  else if (enemy.shape === 'rock') drawRock(painter, enemy);
   else if (enemy.shape === 'dart') drawDart(painter, enemy);
   else drawSaucer(painter, enemy);
+}
+
+function drawCruiser(painter: Painter, enemy: Enemy): void {
+  const { r } = enemy;
+  painter.save();
+  painter.translate(enemy.x, enemy.y);
+  painter.fillEllipse(0, r * 0.35, r * 0.7, r * 0.18, 'rgba(0,0,0,0.3)');
+  painter.fillPolygon(
+    [
+      [0, -r],
+      [r * 0.72, -r * 0.15],
+      [r * 0.48, r * 0.55],
+      [0, r * 0.28],
+      [-r * 0.48, r * 0.55],
+      [-r * 0.72, -r * 0.15],
+    ],
+    '#F0B429',
+  );
+  painter.fillPolygon(
+    [
+      [0, -r * 0.62],
+      [r * 0.32, -r * 0.05],
+      [0, r * 0.12],
+      [-r * 0.32, -r * 0.05],
+    ],
+    '#6A3A12',
+  );
+  painter.fillCircle(-r * 0.22, r * 0.22, r * 0.12, '#FF6A22');
+  painter.fillCircle(r * 0.22, r * 0.22, r * 0.12, '#FF6A22');
+  painter.fillCircle(0, -r * 0.35, r * 0.1, '#FFF6D8');
+  painter.restore();
+}
+
+const GLYPHS: Record<string, string[]> = {
+  '0': ['111', '101', '101', '101', '111'],
+  '1': ['010', '110', '010', '010', '111'],
+  '2': ['111', '001', '111', '100', '111'],
+  '5': ['111', '100', '111', '001', '111'],
+};
+
+function drawDigits(painter: Painter, text: string, x: number, y: number, scale: number, color: string): void {
+  const gap = scale;
+  const width = text.length * 3 * scale + (text.length - 1) * gap;
+  let cursor = x - width / 2;
+  for (const char of text) {
+    const rows = GLYPHS[char];
+    if (!rows) continue;
+    rows.forEach((row, rowIndex) => {
+      for (let col = 0; col < row.length; col += 1) {
+        if (row[col] !== '1') continue;
+        painter.fillRect(cursor + col * scale, y - 2.5 * scale + rowIndex * scale, scale * 0.86, scale * 0.86, color);
+      }
+    });
+    cursor += 3 * scale + gap;
+  }
 }
 
 function drawSaucer(painter: Painter, enemy: Enemy): void {

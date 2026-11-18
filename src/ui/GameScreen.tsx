@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controls } from '../game/controls';
-import { createGame, resizeGame, step } from '../game/logic';
+import { createGame, inventorySlots, resizeGame, step } from '../game/logic';
 import type { GameState } from '../game/types';
 import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
@@ -20,7 +20,18 @@ import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
 import { Overlay, type HudModel } from './Hud';
 
-const INITIAL_HUD: HudModel = { mode: 'ready', score: 0, best: 0, lives: 3, hint: false };
+const INITIAL_HUD: HudModel = {
+  mode: 'ready',
+  score: 0,
+  best: 0,
+  lives: 3,
+  ammo: 100,
+  inventory: [],
+  powerOn: false,
+  rapidTimer: 0,
+  laserTimer: 0,
+  hint: null,
+};
 
 interface DebugSnapshot {
   mode: string;
@@ -32,6 +43,10 @@ interface DebugSnapshot {
   bullets: number;
   enemies: number;
   shotsFired: number;
+  ammo: number;
+  inventory: number;
+  rapidTimer: number;
+  laserTimer: number;
   firing: boolean;
   moveId: number | null;
   fireId: number | null;
@@ -41,7 +56,10 @@ interface DebugSnapshot {
 
 declare global {
   interface Window {
-    __ALIEN__?: { snapshot: () => DebugSnapshot };
+    __ALIEN__?: {
+      snapshot: () => DebugSnapshot;
+      apply: (change: (state: GameState) => void) => void;
+    };
   }
 }
 
@@ -57,12 +75,17 @@ export function GameScreen() {
   const controlsRef = useRef(new Controls());
   const canvasRef = useRef<GameCanvasHandle>(null);
   const layoutRef = useRef(playfield);
+  const offsetRef = useRef(0);
+  const bottomRef = useRef(14);
+  const fineRef = useRef(false);
   const pausedRef = useRef(false);
   const startRef = useRef(false);
   const restartRef = useRef(false);
   const hudRef = useRef(INITIAL_HUD);
   const [hud, setHud] = useState<HudModel>(INITIAL_HUD);
   layoutRef.current = playfield;
+  offsetRef.current = Math.max(0, (window.width - playfield.width) / 2);
+  fineRef.current = finePointer;
 
   const onPressRef = useRef(() => {});
   onPressRef.current = () => {
@@ -137,6 +160,13 @@ export function GameScreen() {
           resizeGame(state, width, height);
           controlsRef.current.reanchor(state.shipX, state.shipY);
         }
+        const slots =
+          state.mode === 'playing'
+            ? inventorySlots(width, height, bottomRef.current, state.inventory.length)
+            : [];
+        controlsRef.current.setInventoryRects(
+          slots.map((slot) => ({ ...slot, x: slot.x + offsetRef.current })),
+        );
         if (!pausedRef.current) {
           const control = controlsRef.current.frame();
           const restarting = restartRef.current && state.mode === 'over';
@@ -145,6 +175,7 @@ export function GameScreen() {
             {
               ...control,
               moveActive: restarting ? false : control.moveActive,
+              activateSlot: controlsRef.current.consumePower(),
               start: startRef.current,
               restart: restartRef.current,
             },
@@ -155,7 +186,7 @@ export function GameScreen() {
           if (restarting) controlsRef.current.reanchor(state.shipX, state.shipY);
         }
         canvasRef.current?.draw(state);
-        publishHud(state, hudRef, setHud);
+        publishHud(state, hudRef, setHud, fineRef.current);
         publishDebug(state, controlsRef.current);
       }
       frame = requestAnimationFrame(loop);
@@ -166,6 +197,7 @@ export function GameScreen() {
 
   const top = Math.max(insets.top, browserInsets.top, 14);
   const bottom = Math.max(insets.bottom, browserInsets.bottom, 14);
+  bottomRef.current = bottom;
 
   return (
     <View
@@ -196,19 +228,50 @@ function publishHud(
   state: GameState,
   hudRef: { current: HudModel },
   setHud: (model: HudModel) => void,
+  finePointer: boolean,
 ): void {
-  const hint = state.mode === 'playing' && state.shotsFired === 0 && state.time < 8;
+  const powerOn = state.rapidTimer > 0 || state.laserTimer > 0 || state.bomb != null || state.blast != null;
+  const hint =
+    state.mode !== 'playing'
+      ? null
+      : state.ammo <= 0
+        ? 'Out of ammo — fly into a box'
+        : state.laserTimer > 0
+          ? finePointer
+            ? 'Point the mouse to aim the laser'
+            : 'Move the firing finger to aim'
+          : state.shotsFired === 0 && state.time < 8
+            ? finePointer
+              ? 'Hold Space to fire'
+              : 'Hold a second finger to fire'
+            : null;
   const prev = hudRef.current;
   if (
     prev.mode === state.mode &&
     prev.score === state.score &&
     prev.lives === state.lives &&
     prev.best === state.best &&
-    prev.hint === hint
+    prev.ammo === state.ammo &&
+    prev.inventory.join() === state.inventory.join() &&
+    prev.powerOn === powerOn &&
+    prev.hint === hint &&
+    Math.abs(prev.rapidTimer - state.rapidTimer) < 0.05 &&
+    Math.abs(prev.laserTimer - state.laserTimer) < 0.05
   ) {
     return;
   }
-  const next = { mode: state.mode, score: state.score, lives: state.lives, best: state.best, hint };
+  const next = {
+    mode: state.mode,
+    score: state.score,
+    lives: state.lives,
+    best: state.best,
+    ammo: state.ammo,
+    inventory: state.inventory.slice(),
+    powerOn,
+    rapidTimer: state.rapidTimer,
+    laserTimer: state.laserTimer,
+    hint,
+  };
   hudRef.current = next;
   setHud(next);
 }
@@ -226,12 +289,17 @@ function publishDebug(state: GameState, controls: Controls): void {
       bullets: state.bullets.length,
       enemies: state.enemies.length,
       shotsFired: state.shotsFired,
+      ammo: state.ammo,
+      inventory: state.inventory.length,
+      rapidTimer: state.rapidTimer,
+      laserTimer: state.laserTimer,
       firing: controls.frame().firing,
       moveId: controls.moveId,
       fireId: controls.fireId,
       width: state.width,
       height: state.height,
     }),
+    apply: (change) => change(state),
   };
 }
 
