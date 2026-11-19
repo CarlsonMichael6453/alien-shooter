@@ -35,6 +35,7 @@ import {
   type HudLayout,
 } from './hudLayout';
 import { createAppStore } from './storage';
+import { isNewHighScore, loadRatingMemory, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
 import {
   FRESH_TUTORIAL,
   advanceTutorial,
@@ -92,6 +93,7 @@ declare global {
       openEditor: () => void;
       closeUi: () => void;
       setTutorial: (progress: TutorialProgress) => void;
+      offerRating: () => void;
     };
   }
 }
@@ -129,6 +131,11 @@ export function GameScreen() {
   const openUiRef = useRef<(next: UiMode) => void>(() => {});
   const [ui, setUi] = useState<UiMode>('none');
   const [selected, setSelected] = useState<HudElementId>('score');
+  const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null });
+  const ratingLoadedRef = useRef(false);
+  const [ratingOffer, setRatingOffer] = useState(false);
+  const feedbackBackRef = useRef<UiMode>('settings');
+  const offerRatingRef = useRef(() => {});
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
   playfieldRef.current = playfield;
@@ -197,10 +204,12 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved] = await Promise.all([loadTutorial(store), loadLayout(store)]);
+      const [progress, saved, rating] = await Promise.all([loadTutorial(store), loadLayout(store), loadRatingMemory(store)]);
       if (cancel) return;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
+      ratingRef.current = rating;
+      ratingLoadedRef.current = true;
       loadedRef.current = true;
     })();
     return () => {
@@ -251,6 +260,8 @@ export function GameScreen() {
         );
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
+        const modeBefore = state.mode;
+        const bestBefore = state.best;
         const frozen = pausedRef.current || uiRef.current !== 'none';
         const control = controlsRef.current.frame();
         if (!frozen) {
@@ -273,6 +284,15 @@ export function GameScreen() {
           controlsRef.current.consumePower();
         }
         if (controlsRef.current.consumeChrome()) openUiRef.current('settings');
+        if (
+          ratingLoadedRef.current &&
+          !frozen &&
+          modeBefore !== 'over' &&
+          state.mode === 'over' &&
+          shouldAskForRating(ratingRef.current, Date.now(), isNewHighScore(state.score, bestBefore))
+        ) {
+          setRatingOffer(true);
+        }
         const tutorial = advanceTutorial(tutorialRef.current, sessionRef.current, {
           mode: state.mode,
           dt,
@@ -311,6 +331,7 @@ export function GameScreen() {
         },
         cue: () => cueRef.current,
         ui: () => uiRef.current,
+        offerRating: () => offerRatingRef.current(),
       });
       }
       frame = requestAnimationFrame(loop);
@@ -330,6 +351,18 @@ export function GameScreen() {
     uiRef.current = next;
     setUi(next);
     if (next !== 'none') controlsRef.current.clearTransient();
+  };
+  offerRatingRef.current = () => setRatingOffer(true);
+
+  const answerRating = (choice: 'rate' | 'later' | 'never') => {
+    const next = rememberRatingChoice(choice, Date.now());
+    ratingRef.current = next;
+    void saveRatingMemory(storeRef.current, next);
+    setRatingOffer(false);
+    if (choice === 'rate') {
+      feedbackBackRef.current = 'none';
+      openUiRef.current('feedback');
+    }
   };
 
   const commitLayout = (next: HudLayout, persist: boolean) => {
@@ -362,7 +395,7 @@ export function GameScreen() {
             ui={ui}
             selected={selected}
             onOpenSettings={() => openUiRef.current('settings')}
-            onCloseUi={() => openUiRef.current('none')}
+            onCloseUi={() => openUiRef.current(ui === 'feedback' ? feedbackBackRef.current : 'none')}
             onReplayTutorial={() => {
               tutorialRef.current = { ...FRESH_TUTORIAL };
               const current = stateRef.current;
@@ -377,6 +410,14 @@ export function GameScreen() {
               void saveTutorial(storeRef.current, FRESH_TUTORIAL);
               openUiRef.current('none');
             }}
+            onOpenFeedback={() => {
+              feedbackBackRef.current = uiRef.current === 'none' ? 'none' : 'settings';
+              openUiRef.current('feedback');
+            }}
+            ratingOffer={ratingOffer}
+            onRate={() => answerRating('rate')}
+            onLater={() => answerRating('later')}
+            onNever={() => answerRating('never')}
             onEditHud={() => openUiRef.current('editor')}
             onDoneEditing={() => openUiRef.current('settings')}
             onSelect={setSelected}
@@ -470,6 +511,7 @@ function publishDebug(
     setTutorial: (progress: TutorialProgress) => void;
     cue: () => TutorialCue;
     ui: () => UiMode;
+    offerRating: () => void;
   },
 ): void {
   if (Platform.OS !== 'web' || !debugEnabled()) return;
@@ -501,6 +543,7 @@ function publishDebug(
     openEditor: ui.openEditor,
     closeUi: ui.closeUi,
     setTutorial: ui.setTutorial,
+    offerRating: ui.offerRating,
   };
 }
 

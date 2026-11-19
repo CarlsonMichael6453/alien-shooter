@@ -11,6 +11,7 @@ import {
   type HudLayout,
 } from './hudLayout';
 import type { TutorialCue } from './tutorial';
+import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 
 export interface HudModel {
   mode: Mode;
@@ -25,7 +26,7 @@ export interface HudModel {
   hint: string | null;
 }
 
-export type UiMode = 'none' | 'settings' | 'editor';
+export type UiMode = 'none' | 'settings' | 'editor' | 'feedback';
 
 interface Props {
   model: HudModel;
@@ -38,6 +39,11 @@ interface Props {
   onOpenSettings: () => void;
   onCloseUi: () => void;
   onReplayTutorial: () => void;
+  onOpenFeedback: () => void;
+  ratingOffer: boolean;
+  onRate: () => void;
+  onLater: () => void;
+  onNever: () => void;
   onEditHud: () => void;
   onDoneEditing: () => void;
   onSelect: (id: HudElementId) => void;
@@ -65,6 +71,11 @@ export function Overlay({
   onOpenSettings,
   onCloseUi,
   onReplayTutorial,
+  onOpenFeedback,
+  ratingOffer,
+  onRate,
+  onLater,
+  onNever,
   onEditHud,
   onDoneEditing,
   onSelect,
@@ -120,6 +131,9 @@ export function Overlay({
 
       {model.mode === 'ready' && ui === 'none' ? <StartCard finePointer={finePointer} /> : null}
       {model.mode === 'over' && ui === 'none' ? <GameOver model={model} /> : null}
+      {ratingOffer && model.mode === 'over' && ui === 'none' ? (
+        <RatingPrompt score={model.score} onRate={onRate} onLater={onLater} onNever={onNever} />
+      ) : null}
 
       {ui === 'none' ? <GearButton rect={gear} onPress={onOpenSettings} /> : null}
       {ui === 'settings' ? (
@@ -127,9 +141,11 @@ export function Overlay({
           paused={playing}
           onClose={onCloseUi}
           onReplay={onReplayTutorial}
+          onFeedback={onOpenFeedback}
           onEdit={onEditHud}
         />
       ) : null}
+      {ui === 'feedback' ? <FeedbackForm onClose={onCloseUi} /> : null}
       {editing ? (
         <EditorBar
           field={field}
@@ -488,11 +504,13 @@ function SettingsMenu({
   paused,
   onClose,
   onReplay,
+  onFeedback,
   onEdit,
 }: {
   paused: boolean;
   onClose: () => void;
   onReplay: () => void;
+  onFeedback: () => void;
   onEdit: () => void;
 }) {
   return (
@@ -509,6 +527,9 @@ function SettingsMenu({
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onEdit} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Edit HUD</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onFeedback} style={styles.menuButton}>
+          <Text style={styles.menuButtonText}>Feedback</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.menuPrimary}>
           <Text style={styles.menuPrimaryText}>{paused ? 'Resume' : 'Close'}</Text>
