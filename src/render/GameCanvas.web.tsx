@@ -1,8 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { paintGame } from '../game/draw';
 import type { GameState } from '../game/types';
-import { createCanvasPainter } from './canvasPainter';
+import { createComicView } from './comic3d';
 import type { GameCanvasHandle } from './types';
 
 interface Props {
@@ -11,7 +10,7 @@ interface Props {
 }
 
 export const GameCanvas = forwardRef<GameCanvasHandle, Props>(function GameCanvas({ width, height }, ref) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewRef = useRef<ReturnType<typeof createComicView> | null>(null);
   const sizeRef = useRef({ width, height });
   sizeRef.current = { width, height };
 
@@ -24,30 +23,25 @@ export const GameCanvas = forwardRef<GameCanvasHandle, Props>(function GameCanva
     canvas.style.display = 'block';
     canvas.style.touchAction = 'none';
     canvas.style.pointerEvents = 'none';
-    host.replaceChildren(canvas);
-    canvasRef.current = canvas;
+    const dots = document.createElement('div');
+    dots.style.cssText =
+      'position:absolute;inset:0;pointer-events:none;opacity:0.18;mix-blend-mode:multiply;background-image:radial-gradient(#111 0.7px, transparent 0.8px);background-size:5px 5px;';
+    host.replaceChildren(canvas, dots);
+    viewRef.current = createComicView(canvas);
     return () => {
+      viewRef.current = null;
       canvas.remove();
-      canvasRef.current = null;
+      dots.remove();
     };
   }, []);
 
   useImperativeHandle(ref, () => ({
     draw(state: GameState) {
-      const canvas = canvasRef.current;
+      const view = viewRef.current;
       const { width: cssWidth, height: cssHeight } = sizeRef.current;
-      if (!canvas || cssWidth <= 0 || cssHeight <= 0) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
-      const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-        canvas.width = pixelWidth;
-        canvas.height = pixelHeight;
-      }
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      paintGame(createCanvasPainter(ctx), state);
+      if (!view || cssWidth <= 0 || cssHeight <= 0) return;
+      view.resize(cssWidth, cssHeight);
+      view.render(state);
     },
   }));
 
@@ -59,5 +53,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
+    backgroundColor: '#120818',
+    borderWidth: 4,
+    borderColor: '#111111',
+    overflow: 'hidden',
   },
 });

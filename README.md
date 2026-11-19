@@ -21,7 +21,7 @@ That link goes live after this branch is merged to `main` and the Pages workflow
 - Rapid fire lasts 5 seconds, shoots four times as fast inside a 30° cone, and does not spend ammo. The bomb drifts forward, ticks once a second for 3 seconds, then bursts across about half the screen. The laser lasts 8 seconds, does not spend ammo, and aims with the firing finger.
 - If a ship hits you, you lose a life. Three lives, then tap to play again.
 
-On a computer: drag or use WASD / arrows to move, hold Space to fire, and press B or click the bomb button. While the laser is active, point the mouse to aim it.
+On a computer: drag or use WASD / arrows to move, hold Space to fire, and press 1, 2, or 3 to use a stored power-up. While the laser is active, point the mouse to aim it. The web build is a comic-book 3D lane: the camera sits behind the ship and only tilts a little as you steer or aim. Music and effects are synthesized in the browser (no recorded tracks) and start after the first tap. Volume and mute live in settings.
 
 ## Run it on the web
 

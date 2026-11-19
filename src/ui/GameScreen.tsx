@@ -36,6 +36,7 @@ import {
   type HudLayout,
 } from './hudLayout';
 import { createAppStore } from './storage';
+import { audio, loadAudio, saveAudio, type AudioSettings } from '../audio/arcade';
 import { isNewHighScore, loadRatingMemory, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
 import {
   FRESH_TUTORIAL,
@@ -144,6 +145,7 @@ export function GameScreen() {
   const [ratingOffer, setRatingOffer] = useState(false);
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
+  const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
   playfieldRef.current = playfield;
@@ -156,7 +158,12 @@ export function GameScreen() {
     if (mode === 'ready') startRef.current = true;
     else if (mode === 'over') restartRef.current = true;
     if (Platform.OS === 'web') activateKeepAwakeAsync().catch(() => {});
+    if (Platform.OS === 'web') audio.unlock();
   };
+
+  useEffect(() => {
+    if (Platform.OS === 'web') audio.installUnlock();
+  }, []);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync('#070B14').catch(() => {});
@@ -212,11 +219,17 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating] = await Promise.all([loadTutorial(store), loadLayout(store), loadRatingMemory(store)]);
+      const [progress, saved, rating, audioSettings] = await Promise.all([
+        loadTutorial(store),
+        loadLayout(store),
+        loadRatingMemory(store),
+        loadAudio(store),
+      ]);
       if (cancel) return;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
+      setAudioUi(audioSettings);
       ratingLoadedRef.current = true;
       loadedRef.current = true;
     })();
@@ -426,6 +439,12 @@ export function GameScreen() {
             onRate={() => answerRating('rate')}
             onLater={() => answerRating('later')}
             onNever={() => answerRating('never')}
+            audio={audioUi}
+            onAudio={(patch) => {
+              const next = { ...audioUi, ...patch };
+              setAudioUi(next);
+              void saveAudio(storeRef.current, next);
+            }}
             onEditHud={() => openUiRef.current('editor')}
             onDoneEditing={() => openUiRef.current('settings')}
             onSelect={setSelected}
