@@ -23,6 +23,7 @@ import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
   defaultLayout,
+  elementBounds,
   gearRect,
   inventoryRects,
   loadLayout,
@@ -37,6 +38,7 @@ import {
 } from './hudLayout';
 import { createAppStore } from './storage';
 import { audio, loadAudio, saveAudio, type AudioSettings } from '../audio/arcade';
+import { loadControlScheme, saveControlScheme, type ControlScheme } from './controlsMode';
 import { isNewHighScore, loadRatingMemory, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
 import {
   FRESH_TUTORIAL,
@@ -55,7 +57,10 @@ const INITIAL_HUD: HudModel = {
   score: 0,
   best: 0,
   lives: 3,
-  ammo: 100,
+  ammo: 200,
+  stickX: 0,
+  stickY: 0,
+  fireHeld: false,
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
@@ -146,6 +151,8 @@ export function GameScreen() {
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
   const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
+  const [scheme, setScheme] = useState<ControlScheme>('joystick');
+  const schemeRef = useRef<ControlScheme>('joystick');
   const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, primed: false });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
@@ -220,17 +227,21 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating, audioSettings] = await Promise.all([
+      const [progress, saved, rating, audioSettings, savedScheme] = await Promise.all([
         loadTutorial(store),
         loadLayout(store),
         loadRatingMemory(store),
         loadAudio(store),
+        loadControlScheme(store),
       ]);
       if (cancel) return;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
       setAudioUi(audioSettings);
+      schemeRef.current = savedScheme;
+      setScheme(savedScheme);
+      controlsRef.current.setScheme(savedScheme);
       ratingLoadedRef.current = true;
       loadedRef.current = true;
     })();
@@ -280,6 +291,14 @@ export function GameScreen() {
         controlsRef.current.setChromeRects(
           uiRef.current === 'none' ? [{ ...gear, x: gear.x + offsetRef.current }] : [],
         );
+        controlsRef.current.setScheme(schemeRef.current);
+        const showPads = schemeRef.current === 'joystick' && uiRef.current === 'none';
+        const stick = hudLayoutRef.current?.elements.find((element) => element.id === 'joystick');
+        const fire = hudLayoutRef.current?.elements.find((element) => element.id === 'fire');
+        controlsRef.current.setActionRects(
+          showPads && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
+          showPads && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
+        );
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
         const modeBefore = state.mode;
@@ -320,7 +339,7 @@ export function GameScreen() {
           dt,
           shipX: state.shipX,
           shipY: state.shipY,
-          moveInput: !frozen && (control.moveActive || control.keyX !== 0 || control.keyY !== 0),
+          moveInput: !frozen && (control.moveActive || control.keyX !== 0 || control.keyY !== 0 || control.stickX !== 0 || control.stickY !== 0),
           shotsFired: state.shotsFired,
           shotsBefore,
           inventory: state.inventory.length,
@@ -338,7 +357,7 @@ export function GameScreen() {
         }
         if (Platform.OS === 'web') syncAudio(state, audioPrev.current);
         canvasRef.current?.draw(state);
-        publishHud(state, hudRef, setHud, fineRef.current);
+        publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
         openEditor: () => openUiRef.current('editor'),
@@ -400,7 +419,7 @@ export function GameScreen() {
     <View
       nativeID="alien-shooter-root"
       collapsable={false}
-      accessibilityLabel="Alien Shooter. Drag one finger to move the ship. Hold a second finger anywhere to fire."
+      accessibilityLabel="Alien Shooter. Drag the stick to move. Hold the fire button to shoot."
       style={[styles.root, webTouch as object]}
       {...nativeTouchProps(controlsRef, stateRef, uiRef, () => onPressRef.current())}
     >
@@ -447,6 +466,14 @@ export function GameScreen() {
               setAudioUi(next);
               void saveAudio(storeRef.current, next);
             }}
+            scheme={scheme}
+            onScheme={(next) => {
+              schemeRef.current = next;
+              setScheme(next);
+              controlsRef.current.setScheme(next);
+              controlsRef.current.clearTransient();
+              void saveControlScheme(storeRef.current, next);
+            }}
             onEditHud={() => openUiRef.current('editor')}
             onDoneEditing={() => openUiRef.current('settings')}
             onSelect={setSelected}
@@ -478,11 +505,20 @@ function playfieldSize(windowWidth: number, windowHeight: number): { width: numb
   return { width, height: windowHeight };
 }
 
+function shiftedRect(element: HudElement, field: Field, offsetX: number) {
+  const bounds = elementBounds(element, field, 1);
+  return { x: bounds.x + offsetX, y: bounds.y, w: bounds.w, h: bounds.h };
+}
+
 function publishHud(
   state: GameState,
   hudRef: { current: HudModel },
   setHud: (model: HudModel) => void,
   finePointer: boolean,
+  scheme: ControlScheme,
+  stickX: number,
+  stickY: number,
+  fireHeld: boolean,
 ): void {
   const powerOn =
     state.rapidTimer > 0 ||
@@ -501,11 +537,15 @@ function publishHud(
         : state.laserTimer > 0
           ? finePointer
             ? 'Point the mouse to aim the laser'
-            : 'Move the firing finger to aim'
+            : scheme === 'joystick'
+              ? 'Drag the fire button to aim'
+              : 'Move the firing finger to aim'
           : state.shotsFired === 0 && state.time < 8
             ? finePointer
               ? 'Hold Space to fire'
-              : 'Hold a second finger to fire'
+              : scheme === 'joystick'
+                ? 'Hold the fire button'
+                : 'Hold a second finger to fire'
             : null;
   const prev = hudRef.current;
   if (
@@ -524,7 +564,10 @@ function publishHud(
     Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
     prev.sectorName === sectorName &&
-    prev.bossHp === (state.boss?.hp ?? 0)
+    prev.bossHp === (state.boss?.hp ?? 0) &&
+    Math.abs(prev.stickX - stickX) < 0.02 &&
+    Math.abs(prev.stickY - stickY) < 0.02 &&
+    prev.fireHeld === fireHeld
   ) {
     return;
   }
@@ -546,6 +589,9 @@ function publishHud(
     shieldTimer: state.shieldTimer,
     wingmanTimer: state.wingmanTimer,
     warpTimer: state.warpTimer,
+    stickX,
+    stickY,
+    fireHeld,
   };
   hudRef.current = next;
   setHud(next);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { parseControlScheme } from './controlsMode';
 import { memoryStore } from './kv';
 import {
   HUD_IDS,
@@ -93,5 +94,18 @@ describe('hud layout', () => {
     assert.equal(parseLayout('nope'), null);
     assert.equal(await loadLayout(memoryStore()), null);
     assert.deepEqual(mergeLayout(null, phone), defaultLayout(phone));
+  });
+
+  it('places the joystick and fire button on opposite sides, clear of the power-ups', () => {
+    const layout = defaultLayout(phone);
+    const stick = elementBounds(layout.elements.find((element) => element.id === 'joystick')!, phone, 1);
+    const fire = elementBounds(layout.elements.find((element) => element.id === 'fire')!, phone, 1);
+    const slots = elementBounds(layout.elements.find((element) => element.id === 'inventory')!, phone, 3);
+    assert.ok(stick.x + stick.w < fire.x);
+    assert.ok(!overlaps(stick, slots));
+    assert.ok(!overlaps(fire, slots));
+    assert.equal(parseControlScheme(null), 'joystick');
+    assert.equal(parseControlScheme('drag'), 'drag');
+    assert.equal(parseControlScheme('nope'), 'joystick');
   });
 });

@@ -5,6 +5,7 @@ import { Controls } from './controls';
 describe('two-finger controls', () => {
   it('treats the first touch as move and the second as fire', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(4, 10, 20, 100, 200);
     controls.pointerDown(9, 40, 80, 100, 200);
     const frame = controls.frame();
@@ -18,6 +19,7 @@ describe('two-finger controls', () => {
 
   it('lets either contact arrive first and still assigns roles in order', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(2, 0, 0, 50, 60);
     assert.equal(controls.moveId, 2);
     assert.equal(controls.fireId, null);
@@ -29,6 +31,7 @@ describe('two-finger controls', () => {
 
   it('moves the ship by the drag delta instead of jumping under the finger', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 30, 400, 180, 640);
     controls.pointerMove(1, 70, 360);
     const frame = controls.frame();
@@ -38,6 +41,7 @@ describe('two-finger controls', () => {
 
   it('keeps the fire finger firing after the move finger lifts', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 0, 0, 10, 10);
     controls.pointerDown(2, 20, 20, 10, 10);
     controls.pointerUp(1);
@@ -56,6 +60,7 @@ describe('two-finger controls', () => {
 
   it('ignores a third finger', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 0, 0, 0, 0);
     controls.pointerDown(2, 0, 0, 0, 0);
     controls.pointerDown(3, 50, 50, 0, 0);
@@ -68,6 +73,7 @@ describe('two-finger controls', () => {
 
   it('stops firing when the fire finger lifts', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 0, 0, 0, 0);
     controls.pointerDown(2, 0, 0, 0, 0);
     controls.pointerUp(2);
@@ -77,6 +83,7 @@ describe('two-finger controls', () => {
 
   it('reanchors so a restart does not throw the ship back to the old spot', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 10, 10, 100, 100);
     controls.pointerMove(1, 40, 25);
     assert.equal(controls.frame().targetX, 130);
@@ -88,6 +95,7 @@ describe('two-finger controls', () => {
 
   it('normalizes diagonal keys and fires from Space without a touch', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.keyDown('KeyA');
     controls.keyDown('KeyW');
     controls.keyDown('Space');
@@ -99,6 +107,7 @@ describe('two-finger controls', () => {
 
   it('lets the right mouse button fire while the left button steers', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.mouseDown(2, 0, 0, 10, 10);
     assert.equal(controls.frame().firing, true);
     assert.equal(controls.moveId, null);
@@ -115,6 +124,7 @@ describe('two-finger controls', () => {
 
   it('treats a tap on the bomb button as a bomb, not a steering finger', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.setInventoryRects([{ x: 14, y: 700, w: 56, h: 56 }]);
     controls.pointerDown(1, 30, 720, 100, 100);
     assert.equal(controls.moveId, null);
@@ -126,6 +136,7 @@ describe('two-finger controls', () => {
 
   it('lets the settings gear swallow a touch without steering or firing', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.setChromeRects([{ x: 300, y: 20, w: 44, h: 44 }]);
     assert.equal(controls.pointerDown(1, 320, 40, 100, 500), 'chrome');
     assert.equal(controls.moveId, null);
@@ -139,6 +150,7 @@ describe('two-finger controls', () => {
 
   it('prefers a power-up slot when it overlaps the settings gear', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.setInventoryRects([{ x: 300, y: 20, w: 56, h: 56 }]);
     controls.setChromeRects([{ x: 300, y: 20, w: 44, h: 44 }]);
     assert.equal(controls.pointerDown(1, 320, 40, 0, 0), 'power');
@@ -149,11 +161,54 @@ describe('two-finger controls', () => {
 
   it('reports how far the firing finger has dragged', () => {
     const controls = new Controls();
+    controls.setScheme('drag');
     controls.pointerDown(1, 10, 10, 0, 0);
     controls.pointerDown(2, 80, 200, 0, 0);
     controls.pointerMove(2, 40, 120);
     const frame = controls.frame();
     assert.equal(frame.fireDragX, -40);
     assert.equal(frame.fireDragY, -80);
+  });
+});
+
+describe('joystick controls', () => {
+  const stick = { x: 20, y: 500, w: 120, h: 120 };
+  const fire = { x: 250, y: 520, w: 96, h: 96 };
+
+  it('steers from the stick and fires from the button at the same time', () => {
+    const controls = new Controls();
+    controls.setActionRects(stick, fire);
+    controls.pointerDown(1, 110, 600, 180, 640);
+    controls.pointerDown(2, 280, 560, 180, 640);
+    const frame = controls.frame();
+    assert.equal(frame.moveActive, false);
+    assert.equal(frame.firing, true);
+    assert.ok(frame.stickX > 0);
+    assert.ok(frame.stickY > 0);
+    controls.pointerUp(2);
+    assert.equal(controls.frame().firing, false);
+    assert.ok(controls.frame().stickX > 0);
+  });
+
+  it('ignores a touch that misses both pads', () => {
+    const controls = new Controls();
+    controls.setActionRects(stick, fire);
+    controls.pointerDown(3, 180, 200, 100, 100);
+    const frame = controls.frame();
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.fireId, null);
+    assert.equal(frame.stickX, 0);
+    assert.equal(frame.firing, false);
+  });
+
+  it('still lets the mouse drag while the pads are the touch controls', () => {
+    const controls = new Controls();
+    controls.setActionRects(stick, fire);
+    controls.mouseDown(0, 10, 10, 40, 50);
+    controls.mouseMove(30, 20);
+    const frame = controls.frame();
+    assert.equal(frame.moveActive, true);
+    assert.equal(frame.targetX, 60);
+    assert.equal(frame.targetY, 60);
   });
 });

@@ -7,6 +7,8 @@ export interface ControlFrame {
   keyY: number;
   fireDragX: number;
   fireDragY: number;
+  stickX: number;
+  stickY: number;
   hoverActive: boolean;
   hoverX: number;
   hoverY: number;
@@ -20,6 +22,7 @@ export interface BombRect {
 }
 
 export type PointerRole = 'play' | 'power' | 'chrome';
+export type ControlScheme = 'joystick' | 'drag';
 
 interface Track {
   id: number;
@@ -48,8 +51,22 @@ export class Controls {
   private keys = new Set<string>();
   private inventoryRects: BombRect[] = [];
   private chromeRects: BombRect[] = [];
+  private stickRect: BombRect | null = null;
+  private fireRect: BombRect | null = null;
+  private scheme: ControlScheme = 'joystick';
   private powerRequest: number | null = null;
   private chromeRequest = false;
+
+  setScheme(scheme: ControlScheme): void {
+    if (this.scheme === scheme) return;
+    this.scheme = scheme;
+    this.clearTransient();
+  }
+
+  setActionRects(stick: BombRect | null, fire: BombRect | null): void {
+    this.stickRect = stick;
+    this.fireRect = fire;
+  }
 
   setInventoryRects(rects: BombRect[]): void {
     this.inventoryRects = rects;
@@ -88,6 +105,7 @@ export class Controls {
       this.chromeRequest = true;
       return 'chrome';
     }
+    if (this.scheme === 'joystick' && id >= 0) return this.claimPad(id, x, y, shipX, shipY);
     if (this.moveId == null) {
       this.moveId = id;
       this.pointers.set(id, {
@@ -220,12 +238,21 @@ export class Controls {
     let moveActive = false;
     let targetX = 0;
     let targetY = 0;
+    let stickX = 0;
+    let stickY = 0;
+    const stickHeld = this.scheme === 'joystick' && this.moveId != null && this.moveId >= 0;
     if (this.moveId != null) {
       const track = this.pointers.get(this.moveId);
       if (track) {
-        moveActive = true;
-        targetX = track.shipX + (track.x - track.originX);
-        targetY = track.shipY + (track.y - track.originY);
+        if (stickHeld) {
+          const stick = this.stickVector(track);
+          stickX = stick.x;
+          stickY = stick.y;
+        } else {
+          moveActive = true;
+          targetX = track.shipX + (track.x - track.originX);
+          targetY = track.shipY + (track.y - track.originY);
+        }
       }
     }
 
@@ -256,14 +283,47 @@ export class Controls {
       targetX,
       targetY,
       firing: this.fireId != null || this.mouseFire || keyFire,
-      keyX: moveActive ? 0 : keyX,
-      keyY: moveActive ? 0 : keyY,
+      keyX: moveActive || stickHeld ? 0 : keyX,
+      keyY: moveActive || stickHeld ? 0 : keyY,
       fireDragX,
       fireDragY,
+      stickX,
+      stickY,
       hoverActive: this.hoverActive,
       hoverX: this.hoverX,
       hoverY: this.hoverY,
     };
+  }
+
+  private claimPad(id: number, x: number, y: number, shipX: number, shipY: number): PointerRole {
+    if (this.moveId == null && this.inside(this.stickRect, x, y)) {
+      this.moveId = id;
+      this.pointers.set(id, { id, role: 'move', x, y, originX: x, originY: y, shipX, shipY });
+      return 'play';
+    }
+    if (this.fireId == null && this.inside(this.fireRect, x, y)) {
+      this.fireId = id;
+      this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
+    }
+    return 'play';
+  }
+
+  private inside(rect: BombRect | null, x: number, y: number): boolean {
+    if (!rect) return false;
+    return x >= rect.x && y >= rect.y && x <= rect.x + rect.w && y <= rect.y + rect.h;
+  }
+
+  private stickVector(track: Track): { x: number; y: number } {
+    const rect = this.stickRect;
+    if (!rect) return { x: 0, y: 0 };
+    const radius = Math.min(rect.w, rect.h) * 0.42;
+    if (radius <= 0) return { x: 0, y: 0 };
+    const dx = track.x - (rect.x + rect.w / 2);
+    const dy = track.y - (rect.y + rect.h / 2);
+    const mag = Math.hypot(dx, dy);
+    if (mag < radius * 0.12) return { x: 0, y: 0 };
+    const scale = Math.min(1, mag / radius);
+    return { x: (dx / mag) * scale, y: (dy / mag) * scale };
   }
 
   private hitsInventory(x: number, y: number): number {

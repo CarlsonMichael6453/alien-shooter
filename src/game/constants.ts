@@ -1,11 +1,11 @@
 export const START_LIVES = 3;
-export const START_AMMO = 100;
+export const START_AMMO = 200;
 export const SHIP_MARGIN = 28;
 export const SHIP_HIT_RADIUS = 14;
 export const BULLET_RADIUS = 6;
 export const BULLET_DAMAGE = 1;
 export const BULLET_SPEED = 780;
-export const FIRE_INTERVAL = 0.12;
+export const FIRE_INTERVAL = 0.08;
 export const KEYBOARD_SPEED = 340;
 export const INVULN_TIME = 1.5;
 export const MAX_PARTICLES = 160;
@@ -27,8 +27,12 @@ export const BOMB_SPEED = 88;
 export const BOMB_DAMAGE = 200;
 export const BOMB_BLAST_TIME = 0.55;
 
-export const AMMO_WEIGHT_50 = 0.6;
-export const AMMO_WEIGHT_100 = 0.9;
+/** First ammo box, then the slow-to-fast gap. Both are the old delays divided by 1.5. */
+export const AMMO_FIRST_DELAY = 5.5 / 1.5;
+export const AMMO_INTERVAL_SLOW = 9 / 1.5;
+export const AMMO_INTERVAL_FAST = 6.5 / 1.5;
+export const AMMO_WEIGHT_100 = 0.6;
+export const AMMO_WEIGHT_200 = 0.9;
 
 export const SHIELD_DURATION = 6;
 export const WINGMAN_DURATION = 8;
