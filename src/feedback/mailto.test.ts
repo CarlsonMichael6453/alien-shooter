@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { FEEDBACK_EMAIL } from '../config';
 import { buildMailto, feedbackBody, type FeedbackDraft } from './mailto';
 
 const draft = (overrides: Partial<FeedbackDraft> = {}): FeedbackDraft => ({
@@ -15,6 +16,12 @@ const draft = (overrides: Partial<FeedbackDraft> = {}): FeedbackDraft => ({
 });
 
 describe('feedback mailto', () => {
+  it('sends to the configured inbox', () => {
+    assert.equal(FEEDBACK_EMAIL, 'bykeh1sy@mail.grokbot.com');
+    const url = buildMailto(FEEDBACK_EMAIL, draft({ email: '' }));
+    assert.ok(url?.startsWith('mailto:bykeh1sy@mail.grokbot.com?'));
+  });
+
   it('refuses to build a link when the address is empty', () => {
     assert.equal(buildMailto('', draft()), null);
     assert.equal(buildMailto('   ', draft()), null);
