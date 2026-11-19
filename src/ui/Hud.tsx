@@ -24,6 +24,13 @@ export interface HudModel {
   rapidTimer: number;
   laserTimer: number;
   hint: string | null;
+  sectorName: string;
+  sectorBanner: number;
+  bossHp: number;
+  bossMax: number;
+  shieldTimer: number;
+  wingmanTimer: number;
+  warpTimer: number;
 }
 
 export type UiMode = 'none' | 'settings' | 'editor' | 'feedback';
@@ -129,6 +136,20 @@ export function Overlay({
         <Text style={[styles.hint, { bottom: hintBottom(layout, field, model) }]}>{model.hint}</Text>
       ) : null}
 
+      {model.mode === 'playing' && model.bossMax > 0 ? (
+        <View pointerEvents="none" style={[styles.bossWrap, { top: field.top + 28 }]}>
+          <Text style={styles.bossLabel}>BOSS</Text>
+          <View style={styles.bossTrack}>
+            <View style={[styles.bossFill, { width: `${Math.max(0, Math.min(1, model.bossHp / model.bossMax)) * 100}%` }]} />
+          </View>
+        </View>
+      ) : null}
+      {model.mode === 'playing' && model.sectorBanner > 0.15 ? (
+        <View pointerEvents="none" style={styles.bannerWrap}>
+          <Text style={styles.kicker}>SECTOR</Text>
+          <Text style={styles.bannerTitle}>{model.sectorName.toUpperCase()}</Text>
+        </View>
+      ) : null}
       {model.mode === 'ready' && ui === 'none' ? <StartCard finePointer={finePointer} /> : null}
       {model.mode === 'over' && ui === 'none' ? <GameOver model={model} /> : null}
       {ratingOffer && model.mode === 'over' && ui === 'none' ? (
@@ -324,6 +345,13 @@ function ElementBody({
       </View>
     );
   }
+  if (element.id === 'sector') {
+    return (
+      <Text style={[styles.sectorName, { fontSize: 12 * scale }]} numberOfLines={1}>
+        {model.sectorName}
+      </Text>
+    );
+  }
   if (element.id === 'lives') {
     return (
       <View style={styles.livesWrap}>
@@ -336,6 +364,9 @@ function ElementBody({
         </View>
         {model.rapidTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>RAPID {model.rapidTimer.toFixed(1)}</Text> : null}
         {model.laserTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>LASER {model.laserTimer.toFixed(1)}</Text> : null}
+        {model.shieldTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SHIELD {model.shieldTimer.toFixed(1)}</Text> : null}
+        {model.wingmanTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>WING {model.wingmanTimer.toFixed(1)}</Text> : null}
+        {model.warpTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>WARP {model.warpTimer.toFixed(1)}</Text> : null}
       </View>
     );
   }
@@ -623,9 +654,31 @@ function PowerGlyph({ kind }: { kind: PowerKind }) {
       </View>
     );
   }
+  if (kind === 'laser') {
+    return (
+      <View style={styles.glyph}>
+        <View style={styles.beam} />
+      </View>
+    );
+  }
+  if (kind === 'shield') {
+    return (
+      <View style={styles.glyph}>
+        <View style={styles.shieldBubble} />
+      </View>
+    );
+  }
+  if (kind === 'wingman') {
+    return (
+      <View style={styles.glyph}>
+        <View style={[styles.drone, { left: 4 }]} />
+        <View style={[styles.drone, { right: 4 }]} />
+      </View>
+    );
+  }
   return (
     <View style={styles.glyph}>
-      <View style={styles.beam} />
+      <View style={styles.warpRing} />
     </View>
   );
 }
@@ -820,6 +873,75 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: '#2A1C18',
+  },
+  sectorName: {
+    color: '#E7F6FF',
+    fontFamily: font,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  bossWrap: {
+    position: 'absolute',
+    left: 108,
+    right: 70,
+    alignItems: 'center',
+  },
+  bossLabel: {
+    color: '#FFB089',
+    fontFamily: font,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  bossTrack: {
+    marginTop: 4,
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(8, 12, 20, 0.8)',
+    overflow: 'hidden',
+  },
+  bossFill: {
+    height: 8,
+    backgroundColor: '#FF5A3A',
+  },
+  bannerWrap: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    top: '34%',
+    alignItems: 'center',
+  },
+  bannerTitle: {
+    color: '#F4FBFF',
+    fontFamily: font,
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  shieldBubble: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#9DEBFF',
+    backgroundColor: 'rgba(157,235,255,0.2)',
+  },
+  drone: {
+    position: 'absolute',
+    top: 8,
+    width: 7,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: '#E7F3FF',
+  },
+  warpRing: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#C9D4FF',
   },
   beam: {
     width: 7,

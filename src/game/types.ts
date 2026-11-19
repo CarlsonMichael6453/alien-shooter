@@ -2,11 +2,11 @@ export type Mode = 'ready' | 'playing' | 'over';
 
 export type EnemyKind = 'alien' | 'asteroid';
 
-export type EnemyShape = 'saucer' | 'dart' | 'rock' | 'cruiser';
+export type EnemyShape = 'saucer' | 'dart' | 'rock' | 'cruiser' | 'battleship' | 'carrier';
 
-export type PickupKind = 'ammo' | 'rapid' | 'bomb' | 'laser';
+export type PickupKind = 'ammo' | 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp';
 
-export type PowerKind = 'rapid' | 'bomb' | 'laser';
+export type PowerKind = 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp';
 
 export interface Enemy {
   id: number;
@@ -27,6 +27,8 @@ export interface Enemy {
   score: number;
   hp: number;
   maxHp: number;
+  /** Seconds until this ship fires or launches a scout. A large value means it never does. */
+  gun: number;
 }
 
 export interface Bullet {
@@ -55,6 +57,30 @@ export interface Bomb {
   vy: number;
   age: number;
   pulse: number;
+}
+
+export interface EnemyBullet {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+}
+
+export interface Boss {
+  hp: number;
+  maxHp: number;
+  x: number;
+  y: number;
+  dir: number;
+  age: number;
+  pattern: number;
+  patternTime: number;
+  cooldown: number;
+  beam: number;
+  beamDir: number;
+  burned: boolean;
 }
 
 export interface Blast {
@@ -113,13 +139,24 @@ export interface GameState {
   rapidTimer: number;
   laserTimer: number;
   laserAngle: number;
+  shieldTimer: number;
+  shieldHits: number;
+  wingmanTimer: number;
+  wingmanCooldown: number;
+  warpTimer: number;
+  sector: number;
+  /** Score at which the next boss arrives. */
+  bossScore: number;
+  sectorBanner: number;
   spark: number;
   /** When true the simulation is frozen so a frame can be inspected. */
   hold: boolean;
   nextId: number;
   bullets: Bullet[];
+  enemyBullets: EnemyBullet[];
   enemies: Enemy[];
   pickups: Pickup[];
+  boss: Boss | null;
   bomb: Bomb | null;
   blast: Blast | null;
   particles: Particle[];

@@ -1,12 +1,12 @@
 import { beamNose } from './logic';
-import type { Enemy, GameState, Pickup } from './types';
+import { sectorTheme } from './sectors';
+import type { Boss, Enemy, GameState, Pickup } from './types';
 import type { Painter } from '../render/painter';
-
-const BG = ['#03060E', '#0A1022', '#120818', '#070B16'] as const;
 
 export function paintGame(painter: Painter, state: GameState): void {
   const { width: w, height: h } = state;
-  painter.fillVerticalGradient(0, 0, w, h, BG);
+  const theme = sectorTheme(state.sector);
+  painter.fillVerticalGradient(0, 0, w, h, theme.sky);
   drawSpace(painter, state);
 
   for (const star of state.stars) {
@@ -40,19 +40,29 @@ export function paintGame(painter: Painter, state: GameState): void {
 
   const ordered = state.enemies.slice().sort((a, b) => b.r - a.r);
   for (const enemy of ordered) {
-    drawEnemy(painter, enemy);
+    drawEnemy(painter, enemy, theme.enemy);
     drawHealth(painter, enemy);
   }
+  if (state.boss) drawBoss(painter, state.boss, theme.enemy, state.time);
 
   if (state.bomb) drawBomb(painter, state.bomb);
   if (state.laserTimer > 0) drawLaser(painter, state);
   if (state.blast && state.blast.age <= 1.7) drawBlast(painter, state.blast);
 
+  for (const bullet of state.enemyBullets) {
+    painter.fillCircle(bullet.x, bullet.y, bullet.r + 2, 'rgba(255, 120, 60, 0.35)');
+    painter.fillCircle(bullet.x, bullet.y, bullet.r * 0.7, '#FFE0B0');
+  }
   for (const bullet of state.bullets) drawBullet(painter, bullet);
 
+  if (state.wingmanTimer > 0) drawWingmen(painter, state);
   drawShip(painter, state);
+  if (state.shieldHits > 0) drawShield(painter, state);
   painter.restore();
 
+  if (state.warpTimer > 0) {
+    painter.fillRect(0, 0, w, h, 'rgba(70, 120, 255, 0.16)');
+  }
   if (state.hitFlash > 0) {
     painter.fillRect(0, 0, w, h, rgba('#FF3355', Math.min(0.38, state.hitFlash)));
   } else if (state.mode === 'playing' && state.lives === 1) {
@@ -68,12 +78,17 @@ export function paintGame(painter: Painter, state: GameState): void {
 
 function drawSpace(painter: Painter, state: GameState): void {
   const { width: w, height: h, time } = state;
+  const theme = sectorTheme(state.sector);
   const dust = (time * 12) % h;
-  painter.fillEllipse(w * 0.2, (h * 0.3 + dust * 0.15) % h, w * 0.46, h * 0.18, 'rgba(88, 48, 150, 0.16)');
-  painter.fillEllipse(w * 0.72, (h * 0.58 + dust * 0.08) % h, w * 0.38, h * 0.14, 'rgba(150, 50, 90, 0.12)');
-  painter.fillEllipse(w * 0.48, h * 0.82, w * 0.55, h * 0.1, 'rgba(30, 70, 140, 0.12)');
-  painter.fillEllipse(w * 0.5, h * 0.5, w * 0.9, 18, 'rgba(180, 190, 220, 0.04)');
-  drawPlanet(painter, w * 0.82, h * 0.18, 26, '#6E5A48', '#3E3228', true);
+  painter.fillEllipse(w * 0.2, (h * 0.3 + dust * 0.15) % h, w * 0.46, h * 0.18, theme.nebula);
+  painter.fillEllipse(w * 0.72, (h * 0.58 + dust * 0.08) % h, w * 0.38, h * 0.14, theme.dust);
+  painter.fillEllipse(w * 0.48, h * 0.82, w * 0.55, h * 0.1, 'rgba(255,255,255,0.04)');
+  if (state.sector % 5 === 1) {
+    painter.fillEllipse(w * 0.3, h * 0.4, 18, 10, 'rgba(160,140,110,0.35)');
+    painter.fillEllipse(w * 0.62, h * 0.66, 28, 14, 'rgba(120,100,80,0.4)');
+  }
+  const planet = state.sector % 5 === 3 ? '#8A4030' : state.sector % 5 === 4 ? '#3E6A48' : '#6E5A48';
+  drawPlanet(painter, w * 0.82, h * 0.18, state.sector % 5 === 3 ? 40 : 26, planet, '#2A2018', true);
   drawPlanet(painter, w * 0.14, h * 0.7, 15, '#31465C', '#1C2A38', false);
 }
 
@@ -228,6 +243,9 @@ function drawPickup(painter: Painter, pickup: Pickup, time: number): void {
   if (pickup.kind === 'ammo') drawAmmoIcon(painter, pickup.amount);
   else if (pickup.kind === 'rapid') drawRapidIcon(painter);
   else if (pickup.kind === 'bomb') drawMushroomIcon(painter);
+  else if (pickup.kind === 'shield') drawShieldIcon(painter);
+  else if (pickup.kind === 'wingman') drawWingmanIcon(painter);
+  else if (pickup.kind === 'warp') drawWarpIcon(painter);
   else drawLaserIcon(painter);
   painter.restore();
 }
@@ -411,11 +429,144 @@ function pointLineDistance(px: number, py: number, x1: number, y1: number, x2: n
   return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
 }
 
-function drawEnemy(painter: Painter, enemy: Enemy): void {
+function drawEnemy(painter: Painter, enemy: Enemy, tint: string): void {
+  painter.save();
   if (enemy.shape === 'cruiser') drawCruiser(painter, enemy);
   else if (enemy.shape === 'rock') drawRock(painter, enemy);
   else if (enemy.shape === 'dart') drawDart(painter, enemy);
+  else if (enemy.shape === 'battleship') drawBattleship(painter, enemy);
+  else if (enemy.shape === 'carrier') drawCarrier(painter, enemy);
   else drawSaucer(painter, enemy);
+  painter.restore();
+  if (enemy.shape !== 'rock') painter.strokeCircle(enemy.x, enemy.y, enemy.r + 2, rgba(tint, 0.35), 1.2);
+}
+
+function drawBattleship(painter: Painter, enemy: Enemy): void {
+  painter.save();
+  painter.translate(enemy.x, enemy.y);
+  painter.fillPolygon(
+    [
+      [-enemy.r, 6],
+      [-enemy.r * 0.7, -enemy.r * 0.55],
+      [enemy.r * 0.7, -enemy.r * 0.55],
+      [enemy.r, 6],
+      [enemy.r * 0.45, enemy.r * 0.55],
+      [-enemy.r * 0.45, enemy.r * 0.55],
+    ],
+    '#4A5564',
+  );
+  painter.fillRoundRect(-enemy.r * 0.35, -enemy.r * 0.28, enemy.r * 0.7, enemy.r * 0.5, 4, '#D8DEE6');
+  painter.fillRect(-enemy.r * 0.7, -2, enemy.r * 1.4, 5, '#8A7344');
+  painter.fillCircle(0, -enemy.r * 0.05, 5, '#F2D48A');
+  painter.restore();
+}
+
+function drawCarrier(painter: Painter, enemy: Enemy): void {
+  painter.save();
+  painter.translate(enemy.x, enemy.y);
+  painter.fillRoundRect(-enemy.r, -enemy.r * 0.38, enemy.r * 2, enemy.r * 0.76, 8, '#5C6A78');
+  painter.fillRoundRect(-enemy.r * 0.72, -enemy.r * 0.16, enemy.r * 0.7, enemy.r * 0.34, 3, '#1C2430');
+  painter.fillRect(-enemy.r * 0.2, -enemy.r * 0.55, enemy.r * 0.28, enemy.r * 0.7, '#C8D2DC');
+  painter.fillCircle(enemy.r * 0.45, 0, 4, '#F0C878');
+  painter.restore();
+}
+
+function drawBoss(painter: Painter, boss: Boss, tint: string, time: number): void {
+  painter.save();
+  painter.translate(boss.x, boss.y);
+  const pulse = 1 + Math.sin(time * 3) * 0.03;
+  painter.fillPolygon(
+    [
+      [-62 * pulse, 10],
+      [-40, -34],
+      [0, -48],
+      [40, -34],
+      [62 * pulse, 10],
+      [28, 36],
+      [-28, 36],
+    ],
+    '#1B2836',
+  );
+  painter.fillPolygon(
+    [
+      [-28, 4],
+      [0, -26],
+      [28, 4],
+      [12, 20],
+      [-12, 20],
+    ],
+    tint,
+  );
+  painter.fillCircle(0, 0, 8, '#F6FBFF');
+  painter.fillCircle(-34, 14, 4, '#FFB089');
+  painter.fillCircle(34, 14, 4, '#FFB089');
+  painter.restore();
+  if (boss.pattern === 1 && boss.beam > 0.25) {
+    const angle = Math.PI / 2 + Math.sin(boss.beam) * 1.05;
+    const x2 = boss.x + Math.cos(angle) * 900;
+    const y2 = boss.y + 20 + Math.sin(angle) * 900;
+    painter.fillCircle(boss.x, boss.y + 18, 10, 'rgba(255,70,40,0.8)');
+    const steps = 18;
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps;
+      painter.fillCircle(boss.x + (x2 - boss.x) * t, boss.y + 20 + (y2 - (boss.y + 20)) * t, 7, 'rgba(255,90,50,0.45)');
+    }
+  }
+}
+
+function drawShield(painter: Painter, state: GameState): void {
+  const flicker = 0.45 + Math.sin(state.time * 8) * 0.15;
+  painter.strokeCircle(state.shipX, state.shipY, 28, rgba('#9DEBFF', flicker), 3);
+  painter.fillCircle(state.shipX - 8, state.shipY - 8, 6, 'rgba(255,255,255,0.18)');
+}
+
+function drawWingmen(painter: Painter, state: GameState): void {
+  for (const side of [-1, 1]) {
+    const x = state.shipX + side * 36;
+    const y = state.shipY + 4;
+    painter.fillPolygon(
+      [
+        [x, y - 12],
+        [x + side * 8, y + 6],
+        [x - side * 4, y + 4],
+      ],
+      '#D5E7F5',
+    );
+    painter.fillCircle(x, y + 8, 2.4, '#7EF0FF');
+  }
+}
+
+function drawShieldIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#102433');
+  painter.strokeCircle(0, 0, 14, 'rgba(157,235,255,0.9)', 3);
+  painter.fillCircle(-4, -4, 3, 'rgba(255,255,255,0.55)');
+}
+
+function drawWingmanIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#102033');
+  painter.fillPolygon(
+    [
+      [-8, 6],
+      [-2, -10],
+      [2, 4],
+    ],
+    '#E7F3FF',
+  );
+  painter.fillPolygon(
+    [
+      [8, 6],
+      [2, -10],
+      [-2, 4],
+    ],
+    '#B7D4EA',
+  );
+}
+
+function drawWarpIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#161228');
+  painter.strokeCircle(0, 0, 13, 'rgba(150, 170, 255, 0.9)', 2);
+  painter.fillCircle(0, 0, 4, '#C9D4FF');
+  painter.fillRect(-1, -9, 2, 8, '#E4E9FF');
 }
 
 function drawCruiser(painter: Painter, enemy: Enemy): void {

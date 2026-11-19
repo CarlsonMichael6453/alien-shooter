@@ -29,3 +29,13 @@ export const BOMB_BLAST_TIME = 0.55;
 
 export const AMMO_WEIGHT_50 = 0.6;
 export const AMMO_WEIGHT_100 = 0.9;
+
+export const SHIELD_DURATION = 6;
+export const WINGMAN_DURATION = 8;
+export const WINGMAN_INTERVAL = 0.22;
+export const WARP_DURATION = 5;
+export const WARP_SCALE = 0.5;
+
+export const SECTOR_BANNER = 1.8;
+export const BATTLESHIP_HP = 40;
+export const CARRIER_HP = 30;

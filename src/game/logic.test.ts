@@ -295,6 +295,64 @@ describe('simulation', () => {
     assert.deepEqual(state.inventory, ['bomb', 'laser']);
     assert.equal(state.bomb, null);
   });
+
+  it('runs the shield, wingman, and time warp on a timer', () => {
+    const shield = playing();
+    shield.inventory = ['shield'];
+    step(shield, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.equal(shield.shieldHits, 1);
+    assert.ok(shield.shieldTimer > 5.5);
+    shield.enemies.push(makeEnemy({ id: 9, x: shield.shipX, y: shield.shipY, r: 20, vy: 0, hp: 5, maxHp: 5 }));
+    step(shield, idleIntent(), 0.016);
+    assert.equal(shield.lives, 3);
+    assert.equal(shield.shieldHits, 0);
+
+    const wing = playing();
+    wing.inventory = ['wingman'];
+    wing.ammo = 10;
+    step(wing, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.ok(wing.wingmanTimer > 7);
+    for (let i = 0; i < 6; i += 1) step(wing, idleIntent(), 0.05);
+    assert.ok(wing.bullets.length >= 2);
+    assert.equal(wing.ammo, 10);
+    assert.equal(wing.shotsFired, 0);
+    wing.wingmanTimer = 0.02;
+    step(wing, idleIntent(), 0.05);
+    assert.equal(wing.wingmanTimer, 0);
+
+    const warp = playing();
+    warp.inventory = ['warp'];
+    warp.enemyBullets.push({ id: 3, x: 40, y: 100, vx: 0, vy: 200, r: 5 });
+    step(warp, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.ok(warp.warpTimer > 4.5);
+    const before = warp.enemyBullets[0].y;
+    step(warp, idleIntent(), 0.05);
+    const moved = warp.enemyBullets[0].y - before;
+    assert.ok(moved > 4 && moved < 6, `warp moved the bullet ${moved}`);
+  });
+
+  it('starts a boss at 1000 points and opens the next sector when it falls', () => {
+    const state = playing();
+    state.score = 1000;
+    state.spawnCooldown = 0;
+    step(state, idleIntent(), 0.05);
+    assert.ok(state.boss);
+    assert.equal(state.boss?.maxHp, 50);
+    assert.equal(state.sector, 0);
+    const during = state.enemies.length;
+    state.spawnCooldown = 0;
+    step(state, idleIntent(), 0.05);
+    assert.equal(state.enemies.length, during);
+    state.boss!.hp = 1;
+    state.bullets.push({ id: 8, x: state.boss!.x, y: state.boss!.y, vx: 0, vy: 0, r: 8 });
+    step(state, idleIntent(), 0.05);
+    assert.equal(state.boss, null);
+    assert.equal(state.sector, 1);
+    assert.equal(state.bossScore, 2000);
+    assert.ok(state.sectorBanner > 1);
+    assert.equal(state.pickups.length, 1);
+    assert.notEqual(state.pickups[0].kind, 'ammo');
+  });
 });
 
 function normalizeAngle(angle: number): number {
