@@ -1,6 +1,7 @@
 import {
   AMMO_WEIGHT_100,
   AMMO_WEIGHT_50,
+  BATTLESHIP_HP,
   BOMB_BLAST_TIME,
   BOMB_DAMAGE,
   BOMB_FUSE,
@@ -8,6 +9,7 @@ import {
   BULLET_DAMAGE,
   BULLET_RADIUS,
   BULLET_SPEED,
+  CARRIER_HP,
   FIRE_INTERVAL,
   INVULN_TIME,
   KEYBOARD_SPEED,
@@ -20,13 +22,20 @@ import {
   RAPID_CONE,
   RAPID_DURATION,
   RAPID_RATE,
+  SECTOR_BANNER,
+  SHIELD_DURATION,
   SHIP_HIT_RADIUS,
   SHIP_MARGIN,
   START_AMMO,
   START_LIVES,
+  WARP_DURATION,
+  WARP_SCALE,
+  WINGMAN_DURATION,
+  WINGMAN_INTERVAL,
 } from './constants';
 import { createRng } from './rng';
-import type { Blast, Bomb, Enemy, GameState, Intent, Particle, Pickup, PickupKind, Rng } from './types';
+import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
+import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
 
 export interface Difficulty {
   spawnInterval: number;
@@ -111,12 +120,22 @@ export function createGame(
     rapidTimer: 0,
     laserTimer: 0,
     laserAngle: -Math.PI / 2,
+    shieldTimer: 0,
+    shieldHits: 0,
+    wingmanTimer: 0,
+    wingmanCooldown: 0,
+    warpTimer: 0,
+    sector: 0,
+    bossScore: nextBossScore(0),
+    sectorBanner: 0,
     spark: 0,
     hold: false,
     nextId: 1,
     bullets: [],
+    enemyBullets: [],
     enemies: [],
     pickups: [],
+    boss: null,
     bomb: null,
     blast: null,
     particles: [],
@@ -151,6 +170,7 @@ export function makeEnemy(partial: Partial<Enemy> & Pick<Enemy, 'x' | 'y'>): Ene
     score: partial.score ?? 100,
     hp,
     maxHp: partial.maxHp ?? hp,
+    gun: partial.gun ?? 999,
   };
 }
 
@@ -177,6 +197,14 @@ export function resizeGame(state: GameState, width: number, height: number): voi
   for (const particle of state.particles) {
     particle.x *= sx;
     particle.y *= sy;
+  }
+  if (state.boss) {
+    state.boss.x *= sx;
+    state.boss.y *= sy;
+  }
+  for (const bullet of state.enemyBullets) {
+    bullet.x *= sx;
+    bullet.y *= sy;
   }
   if (state.bomb) {
     state.bomb.x *= sx;
@@ -211,6 +239,7 @@ export function step(state: GameState, intent: Intent, dt: number): void {
     if (!intent.start) return;
     state.mode = 'playing';
     state.time = 0;
+    state.sectorBanner = SECTOR_BANNER;
     state.spawnCooldown = 0.55;
     state.ammoCooldown = 5.5;
     state.powerCooldown = 8;
@@ -229,6 +258,10 @@ export function step(state: GameState, intent: Intent, dt: number): void {
   spawnPickups(state, frame);
   moveBullets(state, frame);
   moveEnemies(state, frame);
+  moveEnemyBullets(state, frame);
+  tickHeavyGuns(state, frame);
+  tickWingmen(state, frame);
+  tickBoss(state, frame);
   movePickups(state, frame);
   moveParticles(state, frame);
   collide(state, frame);
@@ -245,6 +278,16 @@ function restart(state: GameState): void {
   state.rapidTimer = 0;
   state.laserTimer = 0;
   state.laserAngle = -Math.PI / 2;
+  state.shieldTimer = 0;
+  state.shieldHits = 0;
+  state.wingmanTimer = 0;
+  state.wingmanCooldown = 0;
+  state.warpTimer = 0;
+  state.sector = 0;
+  state.bossScore = nextBossScore(0);
+  state.sectorBanner = SECTOR_BANNER;
+  state.boss = null;
+  state.enemyBullets = [];
   state.shipX = state.width / 2;
   state.shipY = state.height - 118;
   state.firing = false;
@@ -302,10 +345,29 @@ function updateAim(state: GameState, intent: Intent): void {
 function tickPowers(state: GameState, dt: number): void {
   state.rapidTimer = Math.max(0, state.rapidTimer - dt);
   state.laserTimer = Math.max(0, state.laserTimer - dt);
+  state.wingmanTimer = Math.max(0, state.wingmanTimer - dt);
+  state.warpTimer = Math.max(0, state.warpTimer - dt);
+  state.sectorBanner = Math.max(0, state.sectorBanner - dt);
+  if (state.shieldTimer > 0) {
+    state.shieldTimer = Math.max(0, state.shieldTimer - dt);
+    if (state.shieldTimer === 0) state.shieldHits = 0;
+  }
+}
+
+function warpPace(state: GameState): number {
+  return state.warpTimer > 0 ? WARP_SCALE : 1;
 }
 
 function powerActive(state: GameState): boolean {
-  return state.rapidTimer > 0 || state.laserTimer > 0 || state.bomb != null || state.blast != null;
+  return (
+    state.rapidTimer > 0 ||
+    state.laserTimer > 0 ||
+    state.shieldTimer > 0 ||
+    state.wingmanTimer > 0 ||
+    state.warpTimer > 0 ||
+    state.bomb != null ||
+    state.blast != null
+  );
 }
 
 function activatePower(state: GameState, intent: Intent): void {
@@ -320,6 +382,20 @@ function activatePower(state: GameState, intent: Intent): void {
   if (kind === 'laser') {
     state.laserTimer = LASER_DURATION;
     state.laserAngle = -Math.PI / 2;
+    return;
+  }
+  if (kind === 'shield') {
+    state.shieldTimer = SHIELD_DURATION;
+    state.shieldHits = 1;
+    return;
+  }
+  if (kind === 'wingman') {
+    state.wingmanTimer = WINGMAN_DURATION;
+    state.wingmanCooldown = 0;
+    return;
+  }
+  if (kind === 'warp') {
+    state.warpTimer = WARP_DURATION;
     return;
   }
   state.bomb = {
@@ -432,6 +508,8 @@ function fire(state: GameState, intent: Intent, dt: number): void {
 }
 
 function spawnEnemies(state: GameState, dt: number): void {
+  maybeStartBoss(state);
+  if (state.boss) return;
   state.spawnCooldown -= dt;
   if (state.spawnCooldown > 0) return;
   const diff = difficulty(state.time);
@@ -439,11 +517,16 @@ function spawnEnemies(state: GameState, dt: number): void {
   if (state.enemies.length >= diff.maxEnemies) return;
 
   const roll = state.rng.next();
+  const theme = sectorTheme(state.sector);
+  if (state.sector >= 1 && roll < 0.1 + theme.loop * 0.02) {
+    spawnHeavy(state, diff.speed);
+    return;
+  }
   const tier: 5 | 10 | 15 =
     roll < diff.cruiserChance ? 15 : roll < diff.cruiserChance + diff.saucerChance ? 10 : 5;
   const radius = tier === 15 ? 36 : tier === 10 ? 24 : 15;
   const speedJitter = 0.88 + state.rng.next() * 0.22;
-  const speed = diff.speed * speedJitter * (tier === 15 ? 0.55 : tier === 10 ? 0.9 : 1.28);
+  const speed = diff.speed * speedJitter * (tier === 15 ? 0.55 : tier === 10 ? 0.9 : 1.28) * (1 + theme.loop * 0.12);
   const wobble = tier === 15 ? 0 : diff.wobble * (tier === 5 ? 1.15 : 0.7);
   const pad = radius + wobble + 10;
   let x = pad + state.rng.next() * Math.max(8, state.width - pad * 2);
@@ -470,6 +553,7 @@ function spawnEnemies(state: GameState, dt: number): void {
     score: tier === 15 ? 200 : tier === 10 ? 100 : 50,
     hp: tier,
     maxHp: tier,
+    gun: tier === 5 ? 999 : 2.2,
   });
 }
 
@@ -484,7 +568,7 @@ function spawnPickups(state: GameState, dt: number): void {
   if (state.powerCooldown <= 0) {
     state.powerCooldown = lerp(15, 11, ramp);
     const roll = state.rng.next();
-    const kind: PickupKind = roll < 0.4 ? 'rapid' : roll < 0.7 ? 'bomb' : 'laser';
+    const kind = rollPower(roll);
     spawnPickup(state, kind, 0);
   }
 }
@@ -516,10 +600,11 @@ function moveBullets(state: GameState, dt: number): void {
 }
 
 function moveEnemies(state: GameState, dt: number): void {
+  const pace = warpPace(state);
   for (const enemy of state.enemies) {
-    enemy.y += enemy.vy * dt;
+    enemy.y += enemy.vy * dt * pace;
     enemy.rot += enemy.rotSpeed * dt;
-    if (enemy.shape === 'cruiser' || enemy.shape === 'rock') {
+    if (enemy.shape === 'cruiser' || enemy.shape === 'rock' || enemy.shape === 'battleship' || enemy.shape === 'carrier') {
       enemy.x += enemy.vx * dt;
       if (enemy.x < enemy.r) {
         enemy.x = enemy.r;
@@ -554,6 +639,7 @@ function moveParticles(state: GameState, dt: number): void {
 }
 
 function collide(state: GameState, dt: number): void {
+  if (state.boss && !state.blast) state.boss.burned = false;
   const deadEnemies = new Set<number>();
   const deadBullets = new Set<number>();
 
@@ -565,6 +651,11 @@ function collide(state: GameState, dt: number): void {
       deadBullets.add(bullet.id);
       hurt(state, enemy, BULLET_DAMAGE, deadEnemies, true);
       break;
+    }
+    if (deadBullets.has(bullet.id) || !state.boss) continue;
+    if (hits(bullet.x, bullet.y, bullet.r, state.boss.x, state.boss.y, 54)) {
+      deadBullets.add(bullet.id);
+      damageBoss(state, BULLET_DAMAGE);
     }
   }
 
@@ -592,6 +683,9 @@ function collide(state: GameState, dt: number): void {
         }
       }
     }
+    if (state.boss && pointSegmentDistance(state.boss.x, state.boss.y, nose.x, nose.y, x2, y2) <= 62) {
+      damageBoss(state, LASER_DPS * dt);
+    }
   }
 
   const blast = state.blast;
@@ -603,6 +697,10 @@ function collide(state: GameState, dt: number): void {
       blast.hit.push(enemy.id);
       hurt(state, enemy, BOMB_DAMAGE, deadEnemies, false);
     }
+    if (state.boss && !state.boss.burned && hits(blast.x, blast.y, radius, state.boss.x, state.boss.y, 54)) {
+      state.boss.burned = true;
+      damageBoss(state, BOMB_DAMAGE);
+    }
   }
 
   for (const pickup of state.pickups) {
@@ -613,13 +711,17 @@ function collide(state: GameState, dt: number): void {
   state.pickups = state.pickups.filter((pickup) => pickup.y < state.height + 40);
 
   let hitPlayer = false;
-  for (const enemy of state.enemies) {
-    if (deadEnemies.has(enemy.id)) continue;
-    if (!hits(enemy.x, enemy.y, enemy.r, state.shipX, state.shipY, SHIP_HIT_RADIUS)) continue;
-    deadEnemies.add(enemy.id);
-    burst(state, enemy.x, enemy.y, '#FFD0E4', 8);
-    if (state.invuln > 0 || hitPlayer) continue;
+  const strike = () => {
+    if (state.invuln > 0 || hitPlayer || state.mode !== 'playing') return;
     hitPlayer = true;
+    if (state.shieldHits > 0) {
+      state.shieldHits = 0;
+      state.shieldTimer = 0;
+      state.invuln = 0.6;
+      state.hitFlash = 0.16;
+      burst(state, state.shipX, state.shipY, '#9DEBFF', 12);
+      return;
+    }
     state.lives -= 1;
     state.invuln = INVULN_TIME;
     state.hitFlash = 0.32;
@@ -629,8 +731,32 @@ function collide(state: GameState, dt: number): void {
       state.mode = 'over';
       state.firing = false;
       state.best = Math.max(state.best, state.score);
-      break;
     }
+  };
+  for (const enemy of state.enemies) {
+    if (deadEnemies.has(enemy.id)) continue;
+    if (!hits(enemy.x, enemy.y, enemy.r, state.shipX, state.shipY, SHIP_HIT_RADIUS)) continue;
+    deadEnemies.add(enemy.id);
+    burst(state, enemy.x, enemy.y, '#FFD0E4', 8);
+    strike();
+  }
+  const deadEnemyBullets: number[] = [];
+  for (const bullet of state.enemyBullets) {
+    if (!hits(bullet.x, bullet.y, bullet.r, state.shipX, state.shipY, SHIP_HIT_RADIUS)) continue;
+    deadEnemyBullets.push(bullet.id);
+    strike();
+  }
+  if (deadEnemyBullets.length > 0) {
+    const gone = new Set(deadEnemyBullets);
+    state.enemyBullets = state.enemyBullets.filter((bullet) => !gone.has(bullet.id));
+  }
+  if (state.boss && state.boss.pattern === 1 && state.boss.beam > 0.25) {
+    const nose = { x: state.boss.x, y: state.boss.y + 20 };
+    const reach = 900;
+    const angle = Math.PI / 2 + Math.sin(state.boss.beam) * 1.05;
+    const x2 = nose.x + Math.cos(angle) * reach;
+    const y2 = nose.y + Math.sin(angle) * reach;
+    if (pointSegmentDistance(state.shipX, state.shipY, nose.x, nose.y, x2, y2) < SHIP_HIT_RADIUS + 14) strike();
   }
 
   if (deadBullets.size > 0) {
@@ -639,6 +765,7 @@ function collide(state: GameState, dt: number): void {
   if (deadEnemies.size > 0) {
     state.enemies = state.enemies.filter((enemy) => !deadEnemies.has(enemy.id));
   }
+  maybeStartBoss(state);
 }
 
 function hurt(state: GameState, enemy: Enemy, amount: number, dead: Set<number>, chip: boolean): void {
@@ -749,6 +876,224 @@ function clampShip(state: GameState): void {
   const maxY = Math.max(minY, state.height - SHIP_MARGIN);
   state.shipX = clamp(state.shipX, minX, maxX);
   state.shipY = clamp(state.shipY, minY, maxY);
+}
+
+function rollPower(roll: number): PowerKind {
+  if (roll < 0.22) return 'rapid';
+  if (roll < 0.4) return 'bomb';
+  if (roll < 0.58) return 'laser';
+  if (roll < 0.74) return 'shield';
+  if (roll < 0.88) return 'wingman';
+  return 'warp';
+}
+
+function spawnHeavy(state: GameState, speed: number): void {
+  const carrier = state.rng.next() < 0.5;
+  const hp = carrier ? CARRIER_HP : BATTLESHIP_HP;
+  const radius = carrier ? 40 : 46;
+  const pad = radius + 12;
+  const x = pad + state.rng.next() * Math.max(8, state.width - pad * 2);
+  state.enemies.push({
+    id: state.nextId++,
+    kind: 'alien',
+    shape: carrier ? 'carrier' : 'battleship',
+    x,
+    y: -radius - 10,
+    baseX: x,
+    vx: (state.rng.next() - 0.5) * 22,
+    vy: speed * (carrier ? 0.42 : 0.34),
+    r: radius,
+    rot: 0,
+    rotSpeed: 0,
+    phase: state.rng.next() * Math.PI * 2,
+    wobbleAmp: 0,
+    wobbleFreq: 1,
+    tint: state.rng.next(),
+    score: hp * 10,
+    hp,
+    maxHp: hp,
+    gun: 1.6,
+  });
+}
+
+function launchScout(state: GameState, mother: Enemy): void {
+  state.enemies.push({
+    id: state.nextId++,
+    kind: 'alien',
+    shape: 'dart',
+    x: mother.x + (state.rng.next() - 0.5) * 30,
+    y: mother.y + mother.r * 0.4,
+    baseX: mother.x,
+    vx: 0,
+    vy: Math.max(140, mother.vy * 2.1),
+    r: 13,
+    rot: 0,
+    rotSpeed: 0.4,
+    phase: state.rng.next() * Math.PI * 2,
+    wobbleAmp: 18,
+    wobbleFreq: 1.6,
+    tint: mother.tint,
+    score: 50,
+    hp: 5,
+    maxHp: 5,
+    gun: 999,
+  });
+}
+
+function fireEnemyBullet(state: GameState, x: number, y: number, vx: number, vy: number): void {
+  if (state.enemyBullets.length > 48) return;
+  state.enemyBullets.push({ id: state.nextId++, x, y, vx, vy, r: 5 });
+}
+
+function fireSpread(state: GameState, x: number, y: number, count: number, width: number, speed: number): void {
+  const start = -width / 2;
+  for (let i = 0; i < count; i += 1) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const angle = Math.PI / 2 + start + t * width;
+    fireEnemyBullet(state, x, y, Math.cos(angle) * speed, Math.sin(angle) * speed);
+  }
+}
+
+function tickHeavyGuns(state: GameState, dt: number): void {
+  const pace = warpPace(state);
+  for (const enemy of state.enemies) {
+    if (enemy.gun >= 900 || enemy.y < -enemy.r) continue;
+    enemy.gun -= dt * pace;
+    if (enemy.gun > 0) continue;
+    if (enemy.shape === 'carrier') {
+      enemy.gun = 2.4;
+      launchScout(state, enemy);
+    } else if (enemy.shape === 'battleship') {
+      enemy.gun = 2.6;
+      fireSpread(state, enemy.x, enemy.y + enemy.r * 0.6, 3, 0.55, 150);
+    } else if (enemy.shape === 'saucer') {
+      enemy.gun = 3.4;
+      fireEnemyBullet(state, enemy.x, enemy.y + enemy.r, 0, 165);
+    } else if (enemy.shape === 'cruiser') {
+      enemy.gun = 2.8;
+      fireEnemyBullet(state, enemy.x, enemy.y + enemy.r, (state.rng.next() - 0.5) * 40, 145);
+    } else {
+      enemy.gun = 999;
+    }
+  }
+}
+
+function moveEnemyBullets(state: GameState, dt: number): void {
+  const pace = warpPace(state);
+  for (const bullet of state.enemyBullets) {
+    bullet.x += bullet.vx * dt * pace;
+    bullet.y += bullet.vy * dt * pace;
+  }
+  state.enemyBullets = state.enemyBullets.filter(
+    (bullet) => bullet.y < state.height + 30 && bullet.y > -40 && bullet.x > -40 && bullet.x < state.width + 40,
+  );
+}
+
+function tickWingmen(state: GameState, dt: number): void {
+  if (state.wingmanTimer <= 0) return;
+  state.wingmanCooldown -= dt;
+  if (state.wingmanCooldown > 0 || state.bullets.length > MAX_BULLETS - 2) return;
+  state.wingmanCooldown = WINGMAN_INTERVAL;
+  for (const side of [-1, 1]) {
+    state.bullets.push({
+      id: state.nextId++,
+      x: state.shipX + side * 36,
+      y: state.shipY - 6,
+      vx: 0,
+      vy: -BULLET_SPEED * 0.92,
+      r: 4,
+    });
+  }
+}
+
+function maybeStartBoss(state: GameState): void {
+  if (state.mode !== 'playing' || state.boss || state.score < state.bossScore) return;
+  const hp = bossHealth(state.sector);
+  state.enemies = [];
+  state.boss = {
+    hp,
+    maxHp: hp,
+    x: state.width / 2,
+    y: 132,
+    dir: 1,
+    age: 0,
+    pattern: 0,
+    patternTime: 0,
+    cooldown: 0.35,
+    beam: 0,
+    beamDir: 1,
+    burned: false,
+  };
+}
+
+function tickBoss(state: GameState, dt: number): void {
+  const boss = state.boss;
+  if (!boss || state.mode !== 'playing') return;
+  const pace = warpPace(state);
+  const stepDt = dt * pace;
+  boss.age += stepDt;
+  boss.patternTime += stepDt;
+  const speed = 36 + state.sector * 7;
+  boss.x += boss.dir * speed * stepDt;
+  if (boss.x < 70) {
+    boss.x = 70;
+    boss.dir = 1;
+  } else if (boss.x > state.width - 70) {
+    boss.x = state.width - 70;
+    boss.dir = -1;
+  }
+  if (boss.patternTime > 3.6) {
+    boss.pattern = (boss.pattern + 1) % 3;
+    boss.patternTime = 0;
+    boss.cooldown = 0.3;
+    boss.beam = 0;
+  }
+  boss.cooldown -= stepDt;
+  const bulletSpeed = bossBulletSpeed(state.sector);
+  if (boss.pattern === 0 && boss.cooldown <= 0) {
+    boss.cooldown = 0.62;
+    fireSpread(state, boss.x, boss.y + 36, 5 + Math.min(state.sector, 3), 0.9, bulletSpeed);
+  } else if (boss.pattern === 1) {
+    boss.beam += stepDt * (0.9 + state.sector * 0.05);
+  } else if (boss.pattern === 2 && boss.cooldown <= 0) {
+    boss.cooldown = 1.35;
+    const darts = state.enemies.filter((enemy) => enemy.shape === 'dart').length;
+    if (darts < 4) {
+      launchScout(state, {
+        x: boss.x,
+        y: boss.y + 24,
+        r: 28,
+        vy: 70,
+        tint: 0.4,
+      } as Enemy);
+    }
+  }
+}
+
+function damageBoss(state: GameState, amount: number): void {
+  const boss = state.boss;
+  if (!boss) return;
+  boss.hp -= amount;
+  if (boss.hp > 0) return;
+  const x = boss.x;
+  const y = boss.y;
+  state.boss = null;
+  state.enemyBullets = [];
+  state.sector += 1;
+  state.bossScore = nextBossScore(state.sector);
+  state.sectorBanner = SECTOR_BANNER;
+  explode(state, x, y, '#F4FBFF');
+  const kind = rollPower(state.rng.next());
+  state.pickups.push({
+    id: state.nextId++,
+    kind,
+    amount: 0,
+    x,
+    y: y + 40,
+    vy: 70,
+    r: 22,
+    spin: 0,
+  });
 }
 
 function hits(ax: number, ay: number, ar: number, bx: number, by: number, br: number): boolean {

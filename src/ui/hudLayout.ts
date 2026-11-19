@@ -3,7 +3,7 @@ import type { Kv } from './kv';
 export const LAYOUT_KEY = 'alien-shooter:hud-layout';
 export const GEAR_SIZE = 44;
 
-export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory'] as const;
+export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory', 'sector'] as const;
 export type HudElementId = (typeof HUD_IDS)[number];
 
 export interface HudElement {
@@ -44,6 +44,7 @@ export function elementLabel(id: HudElementId): string {
   if (id === 'ammo') return 'Ammo';
   if (id === 'lowAmmo') return 'Low ammo';
   if (id === 'lives') return 'Lives';
+  if (id === 'sector') return 'Sector';
   return 'Power-ups';
 }
 
@@ -52,6 +53,7 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
   if (id === 'ammo') return { w: 124 * scale, h: 54 * scale };
   if (id === 'lowAmmo') return { w: 116 * scale, h: 32 * scale };
   if (id === 'lives') return { w: 84 * scale, h: 68 * scale };
+  if (id === 'sector') return { w: 118 * scale, h: 22 * scale };
   const count = Math.max(1, Math.min(3, inventoryCount));
   const slot = 56 * scale;
   const gap = 8 * scale;
@@ -88,6 +90,14 @@ export function defaultLayout(field: Field): HudLayout {
       id: 'inventory',
       x: 14 / width,
       y: (field.height - Math.max(8, field.bottom) - 16 - 56) / height,
+      scale: 1,
+      opacity: 1,
+      visible: true,
+    },
+    {
+      id: 'sector',
+      x: (width - 118) / 2 / width,
+      y: Math.max(8, field.top) / height,
       scale: 1,
       opacity: 1,
       visible: true,

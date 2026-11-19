@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controls } from '../game/controls';
 import { createGame, resizeGame, step } from '../game/logic';
+import { sectorTheme } from '../game/sectors';
 import type { GameState } from '../game/types';
 import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
@@ -58,6 +59,13 @@ const INITIAL_HUD: HudModel = {
   rapidTimer: 0,
   laserTimer: 0,
   hint: null,
+  sectorName: 'Deep Space',
+  sectorBanner: 0,
+  bossHp: 0,
+  bossMax: 0,
+  shieldTimer: 0,
+  wingmanTimer: 0,
+  warpTimer: 0,
 };
 
 interface DebugSnapshot {
@@ -414,7 +422,15 @@ function publishHud(
   setHud: (model: HudModel) => void,
   finePointer: boolean,
 ): void {
-  const powerOn = state.rapidTimer > 0 || state.laserTimer > 0 || state.bomb != null || state.blast != null;
+  const powerOn =
+    state.rapidTimer > 0 ||
+    state.laserTimer > 0 ||
+    state.shieldTimer > 0 ||
+    state.wingmanTimer > 0 ||
+    state.warpTimer > 0 ||
+    state.bomb != null ||
+    state.blast != null;
+  const sectorName = sectorTheme(state.sector).name;
   const hint =
     state.mode !== 'playing'
       ? null
@@ -440,7 +456,13 @@ function publishHud(
     prev.powerOn === powerOn &&
     prev.hint === hint &&
     Math.abs(prev.rapidTimer - state.rapidTimer) < 0.05 &&
-    Math.abs(prev.laserTimer - state.laserTimer) < 0.05
+    Math.abs(prev.laserTimer - state.laserTimer) < 0.05 &&
+    Math.abs(prev.shieldTimer - state.shieldTimer) < 0.05 &&
+    Math.abs(prev.wingmanTimer - state.wingmanTimer) < 0.05 &&
+    Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
+    Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
+    prev.sectorName === sectorName &&
+    prev.bossHp === (state.boss?.hp ?? 0)
   ) {
     return;
   }
@@ -455,6 +477,13 @@ function publishHud(
     rapidTimer: state.rapidTimer,
     laserTimer: state.laserTimer,
     hint,
+    sectorName,
+    sectorBanner: state.sectorBanner,
+    bossHp: state.boss?.hp ?? 0,
+    bossMax: state.boss?.maxHp ?? 0,
+    shieldTimer: state.shieldTimer,
+    wingmanTimer: state.wingmanTimer,
+    warpTimer: state.warpTimer,
   };
   hudRef.current = next;
   setHud(next);
