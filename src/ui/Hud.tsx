@@ -12,6 +12,7 @@ import {
 } from './hudLayout';
 import type { TutorialCue } from './tutorial';
 import type { AudioSettings } from '../audio/arcade';
+import type { ControlScheme } from './controlsMode';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 
 export interface HudModel {
@@ -32,6 +33,9 @@ export interface HudModel {
   shieldTimer: number;
   wingmanTimer: number;
   warpTimer: number;
+  stickX: number;
+  stickY: number;
+  fireHeld: boolean;
 }
 
 export type UiMode = 'none' | 'settings' | 'editor' | 'feedback';
@@ -61,6 +65,8 @@ interface Props {
   onResetLayout: () => void;
   audio: AudioSettings;
   onAudio: (patch: Partial<AudioSettings>) => void;
+  scheme: ControlScheme;
+  onScheme: (scheme: ControlScheme) => void;
 }
 
 const GHOSTS: PowerKind[] = ['rapid', 'bomb', 'laser'];
@@ -95,6 +101,8 @@ export function Overlay({
   onResetLayout,
   audio,
   onAudio,
+  scheme,
+  onScheme,
 }: Props) {
   const playing = model.mode === 'playing';
   const editing = ui === 'editor';
@@ -110,6 +118,7 @@ export function Overlay({
             if (!element.visible && !editing) return null;
             if (element.id === 'inventory' && model.inventory.length === 0 && !editing) return null;
             if (element.id === 'lowAmmo' && model.ammo > 30 && !editing) return null;
+            if ((element.id === 'joystick' || element.id === 'fire') && scheme !== 'joystick' && !editing) return null;
             const count = element.id === 'inventory' ? Math.max(1, inventoryCount) : 1;
             const bounds = elementBounds(element, field, count);
             return (
@@ -134,7 +143,7 @@ export function Overlay({
         : null}
 
       {playing && ui === 'none' && cue ? (
-        <TutorialPrompt cue={cue} field={field} finePointer={finePointer} inventory={inventory ?? null} count={Math.max(1, model.inventory.length)} />
+        <TutorialPrompt cue={cue} field={field} finePointer={finePointer} inventory={inventory ?? null} count={Math.max(1, model.inventory.length)} scheme={scheme} />
       ) : null}
 
       {playing && ui === 'none' && model.hint && !cue ? (
@@ -155,7 +164,7 @@ export function Overlay({
           <Text style={styles.bannerTitle}>{model.sectorName.toUpperCase()}</Text>
         </View>
       ) : null}
-      {model.mode === 'ready' && ui === 'none' ? <StartCard finePointer={finePointer} /> : null}
+      {model.mode === 'ready' && ui === 'none' ? <StartCard finePointer={finePointer} scheme={scheme} /> : null}
       {model.mode === 'over' && ui === 'none' ? <GameOver model={model} /> : null}
       {ratingOffer && model.mode === 'over' && ui === 'none' ? (
         <RatingPrompt score={model.score} onRate={onRate} onLater={onLater} onNever={onNever} />
@@ -171,6 +180,8 @@ export function Overlay({
           onEdit={onEditHud}
           audio={audio}
           onAudio={onAudio}
+          scheme={scheme}
+          onScheme={onScheme}
         />
       ) : null}
       {ui === 'feedback' ? <FeedbackForm onClose={onCloseUi} /> : null}
@@ -359,6 +370,36 @@ function ElementBody({
       </Text>
     );
   }
+  if (element.id === 'joystick') {
+    const knob = Math.min(width, height) * 0.34;
+    const travel = Math.min(width, height) * 0.22;
+    return (
+      <View style={styles.pad}>
+        <View style={styles.stickBase} />
+        <View
+          style={[
+            styles.stickKnob,
+            {
+              width: knob,
+              height: knob,
+              borderRadius: knob / 2,
+              left: width / 2 - knob / 2 + model.stickX * travel,
+              top: height / 2 - knob / 2 + model.stickY * travel,
+            },
+          ]}
+        />
+      </View>
+    );
+  }
+  if (element.id === 'fire') {
+    return (
+      <View style={styles.pad}>
+        <View style={[styles.firePad, model.fireHeld ? styles.firePadHeld : null]}>
+          <View style={styles.fireMark} />
+        </View>
+      </View>
+    );
+  }
   if (element.id === 'lives') {
     return (
       <View style={styles.livesWrap}>
@@ -408,12 +449,14 @@ function TutorialPrompt({
   finePointer,
   inventory,
   count,
+  scheme,
 }: {
   cue: Exclude<TutorialCue, null>;
   field: Field;
   finePointer: boolean;
   inventory: HudElement | null;
   count: number;
+  scheme: ControlScheme;
 }) {
   const drift = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -448,8 +491,26 @@ function TutorialPrompt({
       </View>
     );
   }
-  const title = cue === 'move' ? 'Press anywhere to move' : 'Press again to shoot';
-  const detail = cue === 'move' ? (finePointer ? 'Drag, or use WASD' : '') : finePointer ? 'Hold Space' : 'Second finger';
+  const title =
+    scheme === 'joystick'
+      ? cue === 'move'
+        ? 'Drag the stick to move'
+        : 'Hold the fire button'
+      : cue === 'move'
+        ? 'Press anywhere to move'
+        : 'Press again to shoot';
+  const detail =
+    scheme === 'joystick'
+      ? cue === 'move'
+        ? 'Left side'
+        : 'Right side'
+      : cue === 'move'
+        ? finePointer
+          ? 'Drag, or use WASD'
+          : ''
+        : finePointer
+          ? 'Hold Space'
+          : 'Second finger';
   return (
     <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
       <Text style={styles.promptTitle}>{title}</Text>
@@ -496,14 +557,23 @@ function GearIcon() {
   );
 }
 
-function StartCard({ finePointer }: { finePointer: boolean }) {
+function StartCard({ finePointer, scheme }: { finePointer: boolean; scheme: ControlScheme }) {
   return (
     <View pointerEvents="none" style={styles.cardWrap}>
       <View style={styles.card}>
         <Text style={styles.kicker}>MOBILE DEMO</Text>
         <Text style={styles.title}>ALIEN{'\n'}SHOOTER</Text>
-        <Text style={styles.body}>Drag one finger to move the ship. It follows the drag, so your thumb never covers it.</Text>
-        <Text style={styles.body}>Hold a second finger anywhere to fire upward. Lift it to stop.</Text>
+        {scheme === 'joystick' ? (
+          <>
+            <Text style={styles.body}>Drag the stick on the left to move the ship.</Text>
+            <Text style={styles.body}>Hold the fire button on the right to shoot. Lift it to stop.</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.body}>Drag one finger to move the ship. It follows the drag, so your thumb never covers it.</Text>
+            <Text style={styles.body}>Hold a second finger anywhere to fire upward. Lift it to stop.</Text>
+          </>
+        )}
         {finePointer ? (
           <Text style={styles.desktop}>WASD moves, Space fires. Tap a power-up icon, or press 1, 2, or 3. Point the mouse to aim the laser.</Text>
         ) : null}
@@ -546,6 +616,8 @@ function SettingsMenu({
   onEdit,
   audio,
   onAudio,
+  scheme,
+  onScheme,
 }: {
   paused: boolean;
   onClose: () => void;
@@ -554,6 +626,8 @@ function SettingsMenu({
   onEdit: () => void;
   audio: AudioSettings;
   onAudio: (patch: Partial<AudioSettings>) => void;
+  scheme: ControlScheme;
+  onScheme: (scheme: ControlScheme) => void;
 }) {
   return (
     <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.cardWrap, styles.menuScrim]}>
@@ -563,7 +637,16 @@ function SettingsMenu({
       <View style={styles.card}>
         <Text style={styles.kicker}>{paused ? 'PAUSED' : 'OPTIONS'}</Text>
         <Text style={styles.menuTitle}>SETTINGS</Text>
-        <Text style={styles.menuBody}>Tutorials and the HUD layout stay on this device.</Text>
+        <Text style={styles.menuBody}>Tutorials, controls, and the HUD layout stay on this device.</Text>
+        <Text style={styles.schemeLabel}>Controls</Text>
+        <View style={styles.schemeRow}>
+          <Pressable accessibilityRole="button" onPress={() => onScheme('joystick')} style={[styles.schemeButton, scheme === 'joystick' ? styles.schemeOn : null]}>
+            <Text style={[styles.schemeText, scheme === 'joystick' ? styles.schemeTextOn : null]}>Joystick + Fire</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => onScheme('drag')} style={[styles.schemeButton, scheme === 'drag' ? styles.schemeOn : null]}>
+            <Text style={[styles.schemeText, scheme === 'drag' ? styles.schemeTextOn : null]}>Drag + finger</Text>
+          </Pressable>
+        </View>
         <Pressable accessibilityRole="button" onPress={onReplay} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Replay tutorial</Text>
         </Pressable>
@@ -1204,6 +1287,77 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     paddingVertical: 12,
     borderRadius: 999,
+  },
+  pad: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickBase: {
+    width: '78%',
+    height: '78%',
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(126, 240, 255, 0.75)',
+    backgroundColor: 'rgba(8, 14, 28, 0.42)',
+  },
+  stickKnob: {
+    position: 'absolute',
+    backgroundColor: '#7EF0FF',
+  },
+  firePad: {
+    width: '86%',
+    height: '86%',
+    borderRadius: 999,
+    borderWidth: 3,
+    borderColor: '#FF5A3A',
+    backgroundColor: 'rgba(255, 90, 58, 0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  firePadHeld: {
+    backgroundColor: 'rgba(255, 90, 58, 0.82)',
+    borderColor: '#FFF6C8',
+  },
+  fireMark: {
+    width: '18%',
+    height: '42%',
+    borderRadius: 3,
+    backgroundColor: '#FFF6C8',
+  },
+  schemeLabel: {
+    color: '#E7F7FF',
+    fontFamily: font,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  schemeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  schemeButton: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(126, 240, 255, 0.4)',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  schemeOn: {
+    backgroundColor: '#7EF0FF',
+    borderColor: '#7EF0FF',
+  },
+  schemeText: {
+    color: '#E7F7FF',
+    fontFamily: font,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  schemeTextOn: {
+    color: '#071018',
   },
   volumeRow: {
     flexDirection: 'row',

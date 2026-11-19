@@ -1,6 +1,9 @@
 import {
+  AMMO_FIRST_DELAY,
+  AMMO_INTERVAL_FAST,
+  AMMO_INTERVAL_SLOW,
   AMMO_WEIGHT_100,
-  AMMO_WEIGHT_50,
+  AMMO_WEIGHT_200,
   BATTLESHIP_HP,
   BOMB_BLAST_TIME,
   BOMB_DAMAGE,
@@ -59,6 +62,8 @@ export function idleIntent(partial: Partial<Intent> = {}): Intent {
     activateSlot: null,
     fireDragX: 0,
     fireDragY: 0,
+    stickX: 0,
+    stickY: 0,
     hoverActive: false,
     hoverX: 0,
     hoverY: 0,
@@ -84,11 +89,11 @@ export function halfScreenRadius(width: number, height: number): number {
   return Math.sqrt((width * height) / (2 * Math.PI));
 }
 
-export function rollAmmoAmount(rng: Rng): 50 | 100 | 200 {
+export function rollAmmoAmount(rng: Rng): 100 | 200 | 400 {
   const roll = rng.next();
-  if (roll < AMMO_WEIGHT_50) return 50;
   if (roll < AMMO_WEIGHT_100) return 100;
-  return 200;
+  if (roll < AMMO_WEIGHT_200) return 200;
+  return 400;
 }
 
 export function createGame(
@@ -140,7 +145,7 @@ export function createGame(
     blast: null,
     particles: [],
     stars: [],
-    ammoCooldown: 5.5,
+    ammoCooldown: AMMO_FIRST_DELAY,
     powerCooldown: 8,
     rng,
   };
@@ -241,7 +246,7 @@ export function step(state: GameState, intent: Intent, dt: number): void {
     state.time = 0;
     state.sectorBanner = SECTOR_BANNER;
     state.spawnCooldown = 0.55;
-    state.ammoCooldown = 5.5;
+    state.ammoCooldown = AMMO_FIRST_DELAY;
     state.powerCooldown = 8;
   }
 
@@ -297,7 +302,7 @@ function restart(state: GameState): void {
   state.muzzle = 0;
   state.fireCooldown = 0;
   state.spawnCooldown = 0.55;
-  state.ammoCooldown = 5.5;
+  state.ammoCooldown = AMMO_FIRST_DELAY;
   state.powerCooldown = 8;
   state.shotsFired = 0;
   state.overTimer = 0;
@@ -324,8 +329,8 @@ function moveShip(state: GameState, intent: Intent, dt: number): void {
     state.shipX = intent.targetX;
     state.shipY = intent.targetY;
   } else {
-    state.shipX += intent.keyX * KEYBOARD_SPEED * dt;
-    state.shipY += intent.keyY * KEYBOARD_SPEED * dt;
+    state.shipX += (intent.keyX + intent.stickX) * KEYBOARD_SPEED * dt;
+    state.shipY += (intent.keyY + intent.stickY) * KEYBOARD_SPEED * dt;
   }
   clampShip(state);
 }
@@ -561,7 +566,7 @@ function spawnPickups(state: GameState, dt: number): void {
   const ramp = clamp(state.time / 80, 0, 1);
   state.ammoCooldown -= dt;
   if (state.ammoCooldown <= 0) {
-    state.ammoCooldown = lerp(9, 6.5, ramp);
+    state.ammoCooldown = lerp(AMMO_INTERVAL_SLOW, AMMO_INTERVAL_FAST, ramp);
     spawnPickup(state, 'ammo', rollAmmoAmount(state.rng));
   }
   state.powerCooldown -= dt;

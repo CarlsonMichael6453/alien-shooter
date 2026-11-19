@@ -3,7 +3,9 @@ import type { Kv } from './kv';
 export const LAYOUT_KEY = 'alien-shooter:hud-layout';
 export const GEAR_SIZE = 44;
 
-export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory', 'sector'] as const;
+export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory', 'sector', 'joystick', 'fire'] as const;
+export const JOYSTICK_SIZE = 118;
+export const FIRE_BUTTON_SIZE = 96;
 export type HudElementId = (typeof HUD_IDS)[number];
 
 export interface HudElement {
@@ -45,6 +47,8 @@ export function elementLabel(id: HudElementId): string {
   if (id === 'lowAmmo') return 'Low ammo';
   if (id === 'lives') return 'Lives';
   if (id === 'sector') return 'Sector';
+  if (id === 'joystick') return 'Joystick';
+  if (id === 'fire') return 'Fire button';
   return 'Power-ups';
 }
 
@@ -54,6 +58,8 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
   if (id === 'lowAmmo') return { w: 116 * scale, h: 32 * scale };
   if (id === 'lives') return { w: 84 * scale, h: 68 * scale };
   if (id === 'sector') return { w: 118 * scale, h: 22 * scale };
+  if (id === 'joystick') return { w: JOYSTICK_SIZE * scale, h: JOYSTICK_SIZE * scale };
+  if (id === 'fire') return { w: FIRE_BUTTON_SIZE * scale, h: FIRE_BUTTON_SIZE * scale };
   const count = Math.max(1, Math.min(3, inventoryCount));
   const slot = 56 * scale;
   const gap = 8 * scale;
@@ -98,6 +104,22 @@ export function defaultLayout(field: Field): HudLayout {
       id: 'sector',
       x: (width - 118) / 2 / width,
       y: Math.max(8, field.top) / height,
+      scale: 1,
+      opacity: 1,
+      visible: true,
+    },
+    {
+      id: 'joystick',
+      x: 16 / width,
+      y: (field.height - Math.max(8, field.bottom) - 16 - 56 - 12 - JOYSTICK_SIZE) / height,
+      scale: 1,
+      opacity: 1,
+      visible: true,
+    },
+    {
+      id: 'fire',
+      x: (width - 16 - FIRE_BUTTON_SIZE) / width,
+      y: (field.height - Math.max(8, field.bottom) - 16 - 56 - 12 - FIRE_BUTTON_SIZE) / height,
       scale: 1,
       opacity: 1,
       visible: true,

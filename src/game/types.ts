@@ -183,6 +183,8 @@ export interface Intent {
   activateSlot: number | null;
   fireDragX: number;
   fireDragY: number;
+  stickX: number;
+  stickY: number;
   hoverActive: boolean;
   hoverX: number;
   hoverY: number;

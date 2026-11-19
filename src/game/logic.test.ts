@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO } from './constants';
+import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO } from './constants';
 import { createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
 import { createRng } from './rng';
 
@@ -49,8 +49,7 @@ describe('simulation', () => {
     const state = playing();
     step(state, idleIntent({ firing: true }), 0.016);
     assert.equal(state.shotsFired, 1);
-    step(state, idleIntent({ firing: true }), 0.05);
-    step(state, idleIntent({ firing: true }), 0.05);
+    step(state, idleIntent({ firing: true }), 0.04);
     assert.equal(state.shotsFired, 1);
     step(state, idleIntent({ firing: true }), 0.05);
     assert.equal(state.shotsFired, 2);
@@ -212,13 +211,24 @@ describe('simulation', () => {
     assert.equal(state.pickups.length, 0);
   });
 
-  it('drops 50 most often and 200 least often', () => {
+  it('restocks ammo on a shorter timer', () => {
+    const state = playing();
+    state.time = 0;
+    state.ammoCooldown = 0.01;
+    state.pickups = [];
+    step(state, idleIntent(), 0.02);
+    assert.equal(state.pickups.some((pickup) => pickup.kind === 'ammo'), true);
+    assert.ok(Math.abs(state.ammoCooldown - AMMO_INTERVAL_SLOW) < 0.001);
+    assert.equal(START_AMMO, 200);
+  });
+
+  it('drops 100 most often and 400 least often', () => {
     const rng = createRng(4);
-    const counts = { 50: 0, 100: 0, 200: 0 };
+    const counts = { 100: 0, 200: 0, 400: 0 };
     for (let i = 0; i < 1000; i += 1) counts[rollAmmoAmount(rng)] += 1;
-    assert.ok(counts[50] > counts[100]);
     assert.ok(counts[100] > counts[200]);
-    assert.ok(counts[200] > 40);
+    assert.ok(counts[200] > counts[400]);
+    assert.ok(counts[400] > 40);
   });
 
   it('sprays rapid fire inside a 30 degree cone without spending ammo', () => {
