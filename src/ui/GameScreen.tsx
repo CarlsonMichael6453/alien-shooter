@@ -39,7 +39,7 @@ import {
 import { createAppStore } from './storage';
 import { audio, loadAudio, saveAudio, type AudioSettings } from '../audio/arcade';
 import { loadControlScheme, saveControlScheme, type ControlScheme } from './controlsMode';
-import { isNewHighScore, loadRatingMemory, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
+import { loadRatingMemory, recordDeath, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
 import {
   FRESH_TUTORIAL,
   advanceTutorial,
@@ -145,7 +145,7 @@ export function GameScreen() {
   const openUiRef = useRef<(next: UiMode) => void>(() => {});
   const [ui, setUi] = useState<UiMode>('none');
   const [selected, setSelected] = useState<HudElementId>('score');
-  const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null });
+  const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null, deaths: 0 });
   const ratingLoadedRef = useRef(false);
   const [ratingOffer, setRatingOffer] = useState(false);
   const feedbackBackRef = useRef<UiMode>('settings');
@@ -302,7 +302,6 @@ export function GameScreen() {
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
         const modeBefore = state.mode;
-        const bestBefore = state.best;
         const frozen = pausedRef.current || uiRef.current !== 'none';
         const control = controlsRef.current.frame();
         if (!frozen) {
@@ -325,14 +324,15 @@ export function GameScreen() {
           controlsRef.current.consumePower();
         }
         if (controlsRef.current.consumeChrome()) openUiRef.current('settings');
-        if (
-          ratingLoadedRef.current &&
-          !frozen &&
-          modeBefore !== 'over' &&
-          state.mode === 'over' &&
-          shouldAskForRating(ratingRef.current, Date.now(), isNewHighScore(state.score, bestBefore))
-        ) {
-          setRatingOffer(true);
+        if (ratingLoadedRef.current && !frozen && modeBefore !== 'over' && state.mode === 'over') {
+          const now = Date.now();
+          const next = recordDeath(ratingRef.current);
+          if (shouldAskForRating(next, now)) {
+            next.lastAskedAt = now;
+            setRatingOffer(true);
+          }
+          ratingRef.current = next;
+          void saveRatingMemory(storeRef.current, next);
         }
         const tutorial = advanceTutorial(tutorialRef.current, sessionRef.current, {
           mode: state.mode,
@@ -397,7 +397,7 @@ export function GameScreen() {
   offerRatingRef.current = () => setRatingOffer(true);
 
   const answerRating = (choice: 'rate' | 'later' | 'never') => {
-    const next = rememberRatingChoice(choice, Date.now());
+    const next = rememberRatingChoice(choice, Date.now(), ratingRef.current.deaths);
     ratingRef.current = next;
     void saveRatingMemory(storeRef.current, next);
     setRatingOffer(false);

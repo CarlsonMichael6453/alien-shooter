@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { DRAG_FOLLOW } from './constants';
 import { Controls } from './controls';
 
 describe('two-finger controls', () => {
@@ -35,8 +36,8 @@ describe('two-finger controls', () => {
     controls.pointerDown(1, 30, 400, 180, 640);
     controls.pointerMove(1, 70, 360);
     const frame = controls.frame();
-    assert.equal(frame.targetX, 220);
-    assert.equal(frame.targetY, 600);
+    assert.equal(frame.targetX, 180 + 40 * DRAG_FOLLOW);
+    assert.equal(frame.targetY, 640 - 40 * DRAG_FOLLOW);
   });
 
   it('keeps the fire finger firing after the move finger lifts', () => {
@@ -86,7 +87,7 @@ describe('two-finger controls', () => {
     controls.setScheme('drag');
     controls.pointerDown(1, 10, 10, 100, 100);
     controls.pointerMove(1, 40, 25);
-    assert.equal(controls.frame().targetX, 130);
+    assert.equal(controls.frame().targetX, 100 + 30 * DRAG_FOLLOW);
     controls.reanchor(200, 500);
     const frame = controls.frame();
     assert.equal(frame.targetX, 200);
@@ -115,8 +116,8 @@ describe('two-finger controls', () => {
     controls.mouseMove(15, 25);
     const frame = controls.frame();
     assert.equal(frame.moveActive, true);
-    assert.equal(frame.targetX, 50);
-    assert.equal(frame.targetY, 70);
+    assert.equal(frame.targetX, 40 + 10 * DRAG_FOLLOW);
+    assert.equal(frame.targetY, 50 + 20 * DRAG_FOLLOW);
     assert.equal(frame.firing, true);
     controls.mouseUp(2);
     assert.equal(controls.frame().firing, false);
@@ -208,7 +209,7 @@ describe('joystick controls', () => {
     controls.mouseMove(30, 20);
     const frame = controls.frame();
     assert.equal(frame.moveActive, true);
-    assert.equal(frame.targetX, 60);
-    assert.equal(frame.targetY, 60);
+    assert.equal(frame.targetX, 40 + 20 * DRAG_FOLLOW);
+    assert.equal(frame.targetY, 50 + 10 * DRAG_FOLLOW);
   });
 });

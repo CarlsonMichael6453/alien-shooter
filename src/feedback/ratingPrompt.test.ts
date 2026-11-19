@@ -4,9 +4,10 @@ import { memoryStore } from '../ui/kv';
 import {
   FRESH_RATING,
   RATING_COOLDOWN_MS,
-  isNewHighScore,
+  RATING_MIN_DEATHS,
   loadRatingMemory,
   parseRatingMemory,
+  recordDeath,
   rememberRatingChoice,
   saveRatingMemory,
   shouldAskForRating,
@@ -14,32 +15,40 @@ import {
 
 const day = 24 * 60 * 60 * 1000;
 
+function withDeaths(deaths: number) {
+  let memory = { ...FRESH_RATING };
+  for (let i = 0; i < deaths; i += 1) memory = recordDeath(memory);
+  return memory;
+}
+
 describe('rating prompt cooldown', () => {
-  it('asks only for a new high score, and not for a zero or a tie', () => {
-    assert.equal(isNewHighScore(40, 0), true);
-    assert.equal(isNewHighScore(40, 40), false);
-    assert.equal(isNewHighScore(10, 25), false);
-    assert.equal(isNewHighScore(0, 0), false);
-    assert.equal(shouldAskForRating(FRESH_RATING, 1_000, false), false);
-    assert.equal(shouldAskForRating(FRESH_RATING, 1_000, true), true);
+  it('asks only after five deaths, and not before', () => {
+    const four = withDeaths(RATING_MIN_DEATHS - 1);
+    const five = recordDeath(four);
+    assert.equal(four.deaths, 4);
+    assert.equal(shouldAskForRating(four, 1_000), false);
+    assert.equal(shouldAskForRating(five, 1_000), true);
+    assert.equal(shouldAskForRating(FRESH_RATING, 1_000), false);
   });
 
-  it('waits 90 days after Not now or Rate it, and stays quiet after Don\'t ask again', () => {
-    const asked = rememberRatingChoice('later', 0);
-    assert.equal(shouldAskForRating(asked, RATING_COOLDOWN_MS - 1, true), false);
-    assert.equal(shouldAskForRating(asked, RATING_COOLDOWN_MS, true), true);
-    assert.equal(shouldAskForRating(rememberRatingChoice('rate', 0), 10 * day, true), false);
-    const silenced = rememberRatingChoice('never', 0);
-    assert.equal(shouldAskForRating(silenced, RATING_COOLDOWN_MS * 4, true), false);
-    assert.equal(shouldAskForRating({ never: false, lastAskedAt: 5_000 }, 1_000, true), false);
+  it('waits 30 days after the prompt is shown, and stays quiet after Don\'t ask again', () => {
+    const ready = withDeaths(RATING_MIN_DEATHS);
+    const asked = rememberRatingChoice('later', 0, ready.deaths);
+    assert.equal(shouldAskForRating(asked, RATING_COOLDOWN_MS - 1), false);
+    assert.equal(shouldAskForRating(asked, RATING_COOLDOWN_MS), true);
+    assert.equal(shouldAskForRating(rememberRatingChoice('rate', 0, ready.deaths), 10 * day), false);
+    assert.equal(shouldAskForRating(rememberRatingChoice('rate', 0, ready.deaths), 30 * day), true);
+    const silenced = rememberRatingChoice('never', 0, ready.deaths);
+    assert.equal(shouldAskForRating(silenced, RATING_COOLDOWN_MS * 4), false);
+    assert.equal(shouldAskForRating({ never: false, lastAskedAt: 5_000, deaths: 8 }, 1_000), false);
   });
 
-  it('remembers the choice across a save', async () => {
+  it('remembers the death count and the choice across a save', async () => {
     const store = memoryStore();
-    await saveRatingMemory(store, rememberRatingChoice('never', 50));
-    assert.deepEqual(await loadRatingMemory(store), { never: true, lastAskedAt: 50 });
+    await saveRatingMemory(store, rememberRatingChoice('never', 50, 6));
+    assert.deepEqual(await loadRatingMemory(store), { never: true, lastAskedAt: 50, deaths: 6 });
     assert.deepEqual(parseRatingMemory('nope'), FRESH_RATING);
-    assert.deepEqual(parseRatingMemory('{"lastAskedAt":12}'), { never: false, lastAskedAt: 12 });
+    assert.deepEqual(parseRatingMemory('{"lastAskedAt":12}'), { never: false, lastAskedAt: 12, deaths: 0 });
     assert.deepEqual(await loadRatingMemory(memoryStore()), FRESH_RATING);
   });
 });
