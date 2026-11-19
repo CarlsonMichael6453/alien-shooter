@@ -146,6 +146,7 @@ export function GameScreen() {
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
   const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
+  const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, primed: false });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
   playfieldRef.current = playfield;
@@ -335,6 +336,7 @@ export function GameScreen() {
           cueRef.current = tutorial.cue;
           setCue(tutorial.cue);
         }
+        if (Platform.OS === 'web') syncAudio(state, audioPrev.current);
         canvasRef.current?.draw(state);
         publishHud(state, hudRef, setHud, fineRef.current);
         publishDebug(state, controlsRef.current, {
@@ -547,6 +549,38 @@ function publishHud(
   };
   hudRef.current = next;
   setHud(next);
+}
+
+function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; primed: boolean }): void {
+  if (prev.primed) {
+    if (state.shotsFired > prev.shots) audio.shoot();
+    if (state.score > prev.score) audio.hit();
+    if (state.lives < prev.lives) audio.explosion();
+    if (state.blast && !prev.blast) audio.explosion();
+    if (state.boss && !prev.boss) audio.bossIntro();
+    if (!state.boss && prev.boss) audio.bossWin();
+    if (state.enemyBullets.length > prev.enemyShots + 2) audio.bossAttack();
+    if (state.pickups.length < prev.pickups) audio.pickup();
+    if (state.shieldTimer > 0 && prev.shield === 0) audio.power('shield');
+    if (state.wingmanTimer > 0 && prev.wing === 0) audio.power('wingman');
+    if (state.warpTimer > 0 && prev.warp === 0) audio.power('warp');
+    if (state.rapidTimer > 0 && prev.rapid === 0) audio.power('rapid');
+    if (state.laserTimer > 0 && prev.laser === 0) audio.power('laser');
+  }
+  prev.primed = true;
+  prev.shots = state.shotsFired;
+  prev.score = state.score;
+  prev.lives = state.lives;
+  prev.blast = state.blast != null;
+  prev.boss = state.boss != null;
+  prev.pickups = state.pickups.length;
+  prev.shield = state.shieldTimer;
+  prev.wing = state.wingmanTimer;
+  prev.warp = state.warpTimer;
+  prev.rapid = state.rapidTimer;
+  prev.laser = state.laserTimer;
+  prev.enemyShots = state.enemyBullets.length;
+  if (state.mode === 'playing') audio.tickMusic(state.sector, state.boss != null);
 }
 
 function publishDebug(
