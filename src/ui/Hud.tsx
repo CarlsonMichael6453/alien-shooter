@@ -11,6 +11,7 @@ import {
   type HudLayout,
 } from './hudLayout';
 import type { TutorialCue } from './tutorial';
+import type { AudioSettings } from '../audio/arcade';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 
 export interface HudModel {
@@ -58,6 +59,8 @@ interface Props {
   onPlaceEnd: () => void;
   onPatch: (id: HudElementId, patch: Partial<Pick<HudElement, 'scale' | 'opacity' | 'visible'>>) => void;
   onResetLayout: () => void;
+  audio: AudioSettings;
+  onAudio: (patch: Partial<AudioSettings>) => void;
 }
 
 const GHOSTS: PowerKind[] = ['rapid', 'bomb', 'laser'];
@@ -90,6 +93,8 @@ export function Overlay({
   onPlaceEnd,
   onPatch,
   onResetLayout,
+  audio,
+  onAudio,
 }: Props) {
   const playing = model.mode === 'playing';
   const editing = ui === 'editor';
@@ -164,6 +169,8 @@ export function Overlay({
           onReplay={onReplayTutorial}
           onFeedback={onOpenFeedback}
           onEdit={onEditHud}
+          audio={audio}
+          onAudio={onAudio}
         />
       ) : null}
       {ui === 'feedback' ? <FeedbackForm onClose={onCloseUi} /> : null}
@@ -537,12 +544,16 @@ function SettingsMenu({
   onReplay,
   onFeedback,
   onEdit,
+  audio,
+  onAudio,
 }: {
   paused: boolean;
   onClose: () => void;
   onReplay: () => void;
   onFeedback: () => void;
   onEdit: () => void;
+  audio: AudioSettings;
+  onAudio: (patch: Partial<AudioSettings>) => void;
 }) {
   return (
     <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.cardWrap, styles.menuScrim]}>
@@ -562,6 +573,8 @@ function SettingsMenu({
         <Pressable accessibilityRole="button" onPress={onFeedback} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Feedback</Text>
         </Pressable>
+        <VolumeRow label="Music" value={audio.music} on={audio.musicOn} onToggle={() => onAudio({ musicOn: !audio.musicOn })} onChange={(music) => onAudio({ music })} />
+        <VolumeRow label="SFX" value={audio.sfx} on={audio.sfxOn} onToggle={() => onAudio({ sfxOn: !audio.sfxOn })} onChange={(sfx) => onAudio({ sfx })} />
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.menuPrimary}>
           <Text style={styles.menuPrimaryText}>{paused ? 'Resume' : 'Close'}</Text>
         </Pressable>
@@ -621,6 +634,39 @@ function EditorBar({
       </View>
       <Pressable accessibilityRole="button" onPress={onDone} style={styles.menuPrimary}>
         <Text style={styles.menuPrimaryText}>Done</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function VolumeRow({
+  label,
+  value,
+  on,
+  onToggle,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  on: boolean;
+  onToggle: () => void;
+  onChange: (value: number) => void;
+}) {
+  const bump = (delta: number) => onChange(Math.min(1, Math.max(0, Math.round((value + delta) * 20) / 20)));
+  return (
+    <View style={styles.volumeRow}>
+      <Text style={styles.volumeLabel}>{label}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} quieter`} onPress={() => bump(-0.1)} style={styles.volumeStep}>
+        <Text style={styles.volumeStepText}>−</Text>
+      </Pressable>
+      <View style={styles.volumeTrack}>
+        <View style={[styles.volumeFill, { width: `${Math.round(value * 100)}%` }]} />
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} louder`} onPress={() => bump(0.1)} style={styles.volumeStep}>
+        <Text style={styles.volumeStepText}>+</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={on ? `Mute ${label}` : `Unmute ${label}`} onPress={onToggle} style={styles.volumeMute}>
+        <Text style={styles.volumeMuteText}>{on ? 'On' : 'Off'}</Text>
       </Pressable>
     </View>
   );
@@ -690,9 +736,9 @@ function formatScore(value: number): string {
 }
 
 const font = Platform.select({
-  ios: 'Avenir Next',
-  android: 'sans-serif-condensed',
-  default: 'system-ui, sans-serif',
+  ios: 'Arial Black',
+  android: 'sans-serif-black',
+  default: '"Arial Black", Impact, "Trebuchet MS", sans-serif',
 });
 
 const styles = StyleSheet.create({
@@ -1092,10 +1138,10 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: 'rgba(7, 12, 26, 0.88)',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(126, 240, 255, 0.28)',
+    backgroundColor: '#141820',
+    borderRadius: 8,
+    borderWidth: 4,
+    borderColor: '#111111',
     paddingHorizontal: 22,
     paddingVertical: 26,
   },
@@ -1158,6 +1204,64 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     paddingVertical: 12,
     borderRadius: 999,
+  },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  volumeLabel: {
+    width: 46,
+    color: '#F4FBFF',
+    fontFamily: font,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  volumeTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#2A3140',
+    borderWidth: 2,
+    borderColor: '#111111',
+    overflow: 'hidden',
+  },
+  volumeFill: {
+    height: '100%',
+    backgroundColor: '#FFD23A',
+  },
+  volumeStep: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#111111',
+    backgroundColor: '#7EF0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  volumeStepText: {
+    color: '#111111',
+    fontFamily: font,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  volumeMute: {
+    minWidth: 42,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#111111',
+    backgroundColor: '#F4FBFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  volumeMuteText: {
+    color: '#111111',
+    fontFamily: font,
+    fontSize: 11,
+    fontWeight: '800',
   },
   menuButton: {
     borderRadius: 999,
