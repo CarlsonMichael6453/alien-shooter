@@ -23,15 +23,11 @@ export const GameCanvas = forwardRef<GameCanvasHandle, Props>(function GameCanva
     canvas.style.display = 'block';
     canvas.style.touchAction = 'none';
     canvas.style.pointerEvents = 'none';
-    const dots = document.createElement('div');
-    dots.style.cssText =
-      'position:absolute;inset:0;pointer-events:none;opacity:0.18;mix-blend-mode:multiply;background-image:radial-gradient(#111 0.7px, transparent 0.8px);background-size:5px 5px;';
-    host.replaceChildren(canvas, dots);
+    host.replaceChildren(canvas);
     viewRef.current = createComicView(canvas);
     return () => {
       viewRef.current = null;
       canvas.remove();
-      dots.remove();
     };
   }, []);
 
@@ -53,9 +49,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
-    backgroundColor: '#120818',
-    borderWidth: 4,
-    borderColor: '#111111',
+    backgroundColor: '#1a1612',
+    borderWidth: 3,
+    borderColor: '#120e0c',
     overflow: 'hidden',
   },
 });

@@ -2,6 +2,35 @@ import * as THREE from 'three';
 import { audio } from '../audio/arcade';
 import { sectorTheme } from '../game/sectors';
 import type { Enemy, GameState } from '../game/types';
+import {
+  SECTOR_CORE,
+  SECTOR_FOG,
+  SECTOR_GROUND,
+  SECTOR_RIM,
+  createFlameTexture,
+  createGlowMaterial,
+  createGroundTexture,
+  createOutlineMaterial,
+  createPaintMaterial,
+  createPaintTexture,
+  createSkyTexture,
+  createSmokeTexture,
+  syncFog,
+  type PaintMaterial,
+} from './ink';
+import {
+  battleshipArchetype,
+  bossArchetype,
+  buildGroup,
+  carrierArchetype,
+  cruiserArchetype,
+  dartArchetype,
+  pickupArchetype,
+  rockArchetype,
+  saucerArchetype,
+  shipArchetype,
+  type Archetype,
+} from './rigs';
 
 const LANE_DEPTH = 46;
 const LANE_WIDTH = 14;
@@ -13,227 +42,262 @@ export function worldOf(width: number, height: number, x: number, y: number, lif
   return new THREE.Vector3(wx, lift, wz);
 }
 
-function rampTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 4;
-  canvas.height = 1;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ['#1a1a1a', '#5c5c5c', '#d0d0d0', '#ffffff'].forEach((color, index) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(index, 0, 1, 1);
-    });
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.colorSpace = THREE.NoColorSpace;
-  return texture;
+const SHAPES = ['dart', 'saucer', 'cruiser', 'rock', 'battleship', 'carrier'] as const;
+type ShapeName = (typeof SHAPES)[number];
+
+function shapeOf(enemy: Enemy): ShapeName {
+  return SHAPES.includes(enemy.shape as ShapeName) ? (enemy.shape as ShapeName) : 'saucer';
 }
 
-function wordTexture(text: string, fill: string): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.clearRect(0, 0, 256, 128);
-    ctx.font = '900 78px Impact, "Arial Black", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 14;
-    ctx.strokeStyle = '#111111';
-    ctx.strokeText(text, 128, 68);
-    ctx.fillStyle = fill;
-    ctx.fillText(text, 128, 68);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  return texture;
-}
-
-interface Slot {
-  group: THREE.Group;
-  body: THREE.Mesh;
-  ink: THREE.Mesh;
-}
-
-interface Word {
-  sprite: THREE.Sprite;
-  age: number;
+interface Mote {
+  mesh: THREE.Mesh;
+  life: number;
+  max: number;
+  vel: THREE.Vector3;
+  grow: number;
 }
 
 export function createComicView(canvas: HTMLCanvasElement) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setClearColor(0x120818, 1);
+  renderer.setClearColor(0x1a1814, 1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.28;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x120818, 18, 52);
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
-  const ramp = rampTexture();
-  const inkMat = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
-  const colors = new Map<string, THREE.MeshToonMaterial>();
-  const toon = (color: string) => {
-    let material = colors.get(color);
+  const fog = new THREE.Fog(0x2a3834, 18, 48);
+  scene.fog = fog;
+  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 90);
+
+  const paintTex = createPaintTexture();
+  const groundTex = createGroundTexture();
+  const paint = createPaintMaterial(paintTex);
+  const shipPaint = createPaintMaterial(paintTex);
+  const groundPaint = createPaintMaterial(paintTex);
+  const outline = createOutlineMaterial(0.055);
+  const paints = [paint, shipPaint, groundPaint];
+  const glowCache = new Map<string, THREE.Material>();
+  const glowFor = (color: string, halo: boolean) => {
+    const key = `${color}:${halo ? 1 : 0}`;
+    let material = glowCache.get(key);
     if (!material) {
-      material = new THREE.MeshToonMaterial({ color, gradientMap: ramp });
-      colors.set(color, material);
+      material = createGlowMaterial(color, halo);
+      glowCache.set(key, material);
     }
     return material;
   };
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const sun = new THREE.DirectionalLight(0xfff1d2, 1.35);
-  sun.position.set(4, 10, 6);
-  scene.add(sun);
-  const rim = new THREE.DirectionalLight(0x88ccff, 0.45);
-  rim.position.set(-6, 4, -4);
-  scene.add(rim);
+  const skyMat = new THREE.MeshBasicMaterial({ fog: false, depthWrite: false });
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(70, 32), skyMat);
+  sky.position.set(0, 8, -44);
+  sky.frustumCulled = false;
+  scene.add(sky);
+  const skyTextures = [0, 1, 2, 3, 4].map((index) => createSkyTexture(index));
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(18, 70), toon('#243044'));
+  const groundGeo = new THREE.PlaneGeometry(22, 78);
+  const groundInk = new Float32Array(groundGeo.getAttribute('position').count * 3).fill(1);
+  groundGeo.setAttribute('inkColor', new THREE.BufferAttribute(groundInk, 3));
+  const ground = new THREE.Mesh(groundGeo, groundPaint);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(0, 0, -18);
-  const groundInk = new THREE.Mesh(ground.geometry, inkMat);
-  groundInk.scale.setScalar(1.02);
-  ground.add(groundInk);
+  ground.position.set(0, 0, -20);
   scene.add(ground);
-
-  const laneMarks: THREE.Mesh[] = [];
-  for (let i = 0; i < 8; i += 1) {
-    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 1.4), toon('#f4fbff'));
-    mark.position.set(i % 2 === 0 ? -1.2 : 1.2, 0.03, -4 - i * 5);
-    scene.add(mark);
-    laneMarks.push(mark);
+  const strips: THREE.Mesh[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 1.6), glowFor(i % 2 === 0 ? '#5ee7e4' : '#ff4f8a', false));
+    strip.position.set(i % 2 === 0 ? -1.15 : 1.15, 0.03, -4 - i * 5.2);
+    scene.add(strip);
+    strips.push(strip);
   }
 
-  const geos: Record<string, THREE.BufferGeometry> = {
-    dart: new THREE.ConeGeometry(0.45, 1.3, 5),
-    saucer: new THREE.SphereGeometry(0.7, 8, 6),
-    cruiser: new THREE.BoxGeometry(1.5, 0.45, 0.9),
-    rock: new THREE.DodecahedronGeometry(0.7, 0),
-    battleship: new THREE.BoxGeometry(2.1, 0.55, 1.15),
-    carrier: new THREE.BoxGeometry(2.2, 0.4, 1.3),
-    bullet: new THREE.BoxGeometry(0.16, 0.16, 0.45),
-    shot: new THREE.SphereGeometry(0.14, 6, 5),
+  const archetypes: Record<ShapeName, Archetype> = {
+    dart: dartArchetype(),
+    saucer: saucerArchetype(),
+    cruiser: cruiserArchetype(),
+    rock: rockArchetype(),
+    battleship: battleshipArchetype(),
+    carrier: carrierArchetype(),
   };
-
-  const makeSlot = (): Slot => {
-    const body = new THREE.Mesh(geos.saucer, toon('#ffffff'));
-    const ink = new THREE.Mesh(geos.saucer, inkMat);
-    ink.scale.setScalar(1.12);
-    const group = new THREE.Group();
-    group.add(ink, body);
-    group.visible = false;
-    scene.add(group);
-    return { group, body, ink };
-  };
-
-  const enemies = Array.from({ length: 18 }, makeSlot);
-  const bullets = Array.from({ length: 40 }, () => {
-    const mesh = new THREE.Mesh(geos.bullet, toon('#fff4c8'));
-    mesh.visible = false;
-    scene.add(mesh);
-    return mesh;
-  });
-  const enemyShots = Array.from({ length: 28 }, () => {
-    const mesh = new THREE.Mesh(geos.shot, toon('#ffb15a'));
-    mesh.visible = false;
-    scene.add(mesh);
-    return mesh;
-  });
-  const pickups = Array.from({ length: 8 }, makeSlot);
-  const bursts = Array.from({ length: 20 }, () => {
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 5), toon('#ffe08a'));
-    mesh.visible = false;
-    scene.add(mesh);
-    return mesh;
+  const counts: Record<ShapeName, number> = { dart: 12, saucer: 8, cruiser: 6, rock: 6, battleship: 4, carrier: 4 };
+  const pools: Record<ShapeName, THREE.Group[]> = { dart: [], saucer: [], cruiser: [], rock: [], battleship: [], carrier: [] };
+  (Object.keys(archetypes) as ShapeName[]).forEach((shape) => {
+    const proto = buildGroup(archetypes[shape], paint, outline, glowFor);
+    for (let i = 0; i < counts[shape]; i += 1) {
+      const group = proto.clone(true);
+      group.visible = false;
+      scene.add(group);
+      pools[shape].push(group);
+    }
   });
 
-  const ship = new THREE.Group();
-  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.5, 6), toon('#7ee7ff'));
-  hull.rotation.x = Math.PI / 2;
-  const hullInk = new THREE.Mesh(hull.geometry, inkMat);
-  hullInk.scale.setScalar(1.14);
-  hullInk.rotation.x = Math.PI / 2;
-  const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.35), toon('#ff5a3a'));
-  wingL.position.set(-0.55, 0, 0.15);
-  const wingR = wingL.clone();
-  wingR.position.x = 0.55;
-  ship.add(hullInk, hull, wingL, wingR);
+  const ship = buildGroup(shipArchetype(), shipPaint, outline, glowFor);
   scene.add(ship);
-
-  const shield = new THREE.Mesh(
-    new THREE.SphereGeometry(0.95, 10, 8),
-    new THREE.MeshToonMaterial({ color: '#9debff', gradientMap: ramp, transparent: true, opacity: 0.35 }),
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.72, 12),
+    new THREE.MeshBasicMaterial({ color: 0x120e0c, transparent: true, opacity: 0.4, depthWrite: false }),
   );
+  shadow.rotation.x = -Math.PI / 2;
+  scene.add(shadow);
+
+  const shieldMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: { tint: { value: new THREE.Color('#5ee7e4') } },
+    vertexShader: `
+      varying vec3 vN;
+      varying vec3 vWorld;
+      void main() {
+        vN = normalize(normalMatrix * normal);
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 tint;
+      varying vec3 vN;
+      varying vec3 vWorld;
+      void main() {
+        float fres = pow(1.0 - abs(dot(normalize(vN), normalize(cameraPosition - vWorld))), 1.5);
+        gl_FragColor = vec4(tint, 0.08 + fres * 0.45);
+      }
+    `,
+  });
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(1.05, 12, 8), shieldMat);
   shield.visible = false;
   scene.add(shield);
 
-  const wingmen: THREE.Mesh[] = [-1, 1].map((side) => {
-    const drone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.55, 5), toon('#e7f3ff'));
-    drone.rotation.x = Math.PI / 2;
-    const ink = new THREE.Mesh(drone.geometry, inkMat);
-    ink.scale.setScalar(1.15);
-    drone.add(ink);
+  const wingProto = buildGroup(dartArchetype(), paint, outline, glowFor);
+  const wingmen = [-1, 1].map((side) => {
+    const drone = wingProto.clone(true);
+    drone.scale.setScalar(0.42);
     drone.visible = false;
     drone.userData.side = side;
     scene.add(drone);
     return drone;
   });
 
-  const laser = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 8), toon('#ff4a2a'));
+  const laserMat = createGlowMaterial('#ff6a2a', false);
+  const laserHaloMat = createGlowMaterial('#ff4f8a', true);
+  const laser = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 9), laserMat);
+  const laserHalo = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 9), laserHaloMat);
+  laser.add(laserHalo);
   laser.visible = false;
   scene.add(laser);
 
-  const boss = new THREE.Group();
-  const bossBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 1.6), toon('#1b2836'));
-  const bossInk = new THREE.Mesh(bossBody.geometry, inkMat);
-  bossInk.scale.setScalar(1.08);
-  const bossCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.45, 0), toon('#f0c8ff'));
-  boss.add(bossInk, bossBody, bossCore);
+  const boss = buildGroup(bossArchetype(), paint, outline, glowFor);
+  const bossCoreMat = createGlowMaterial('#ff4f8a', false);
+  const bossCoreHalo = createGlowMaterial('#ff4f8a', true);
+  const bossCore = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), bossCoreMat);
+  const bossCoreGlow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), bossCoreHalo);
+  bossCore.add(bossCoreGlow);
+  bossCore.position.set(0, 0.34, 0.15);
+  boss.add(bossCore);
   boss.visible = false;
   scene.add(boss);
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 12), toon('#ff5a32'));
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 14), laserMat);
+  const beamHalo = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 14), laserHaloMat);
+  beam.add(beamHalo);
   beam.visible = false;
   scene.add(beam);
 
-  const words: Word[] = ['BOOM!', 'ZAP!', 'KRAK!'].flatMap((text) => {
-    const fill = text === 'BOOM!' ? '#ffd23a' : text === 'ZAP!' ? '#7ef0ff' : '#ff5a3a';
-    return [0, 1].map(() => {
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: wordTexture(text, fill), transparent: true, depthWrite: false }));
-      sprite.userData.word = text;
-      sprite.visible = false;
-      sprite.scale.set(3.2, 1.6, 1);
-      scene.add(sprite);
-      return { sprite, age: 10 };
-    });
+  const pickupProto = buildGroup(pickupArchetype(), paint, outline, glowFor);
+  const pickups = Array.from({ length: 8 }, () => {
+    const group = pickupProto.clone(true);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), createGlowMaterial('#5ee7e4', false));
+    glow.position.set(0, 0.02, 0.2);
+    glow.name = 'pickup-glow';
+    group.add(glow);
+    group.visible = false;
+    scene.add(group);
+    return group;
   });
 
+  const bomb = pickupProto.clone(true);
+  const bombGlow = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), createGlowMaterial('#ff6a2a', false));
+  bombGlow.position.set(0, 0.05, 0.22);
+  bomb.add(bombGlow);
+  bomb.visible = false;
+  scene.add(bomb);
+
+  const bulletMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.06, 0.36), createGlowMaterial('#fff1c2', false), 40);
+  bulletMesh.frustumCulled = false;
+  bulletMesh.count = 0;
+  scene.add(bulletMesh);
+  const shotMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 5), createGlowMaterial('#ff8a3a', false), 28);
+  shotMesh.frustumCulled = false;
+  shotMesh.count = 0;
+  scene.add(shotMesh);
+  const dummy = new THREE.Object3D();
+
+  const flameMap = createFlameTexture();
+  const smokeMap = createSmokeTexture();
+  const flameMat = new THREE.MeshBasicMaterial({
+    map: flameMap,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const smokeMat = new THREE.MeshBasicMaterial({
+    map: smokeMap,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+  });
+  const plane = new THREE.PlaneGeometry(1, 1);
+  const motes: Mote[] = [];
+  const spawnMote = (material: THREE.Material, grow: number, max: number) => {
+    const mesh = new THREE.Mesh(plane, material);
+    mesh.visible = false;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    const mote: Mote = { mesh, life: 0, max, vel: new THREE.Vector3(), grow };
+    motes.push(mote);
+    return mote;
+  };
+  const fires = Array.from({ length: 18 }, () => spawnMote(flameMat.clone(), 1.1, 0.7));
+  const smokes = Array.from({ length: 10 }, () => spawnMote(smokeMat.clone(), 1.6, 0.9));
+  const debrisMat = new THREE.MeshBasicMaterial({ color: '#6e6256' });
+  const debris: Mote[] = Array.from({ length: 14 }, () => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.22), debrisMat);
+    mesh.visible = false;
+    scene.add(mesh);
+    const mote: Mote = { mesh, life: 0, max: 0.7, vel: new THREE.Vector3(), grow: 1 };
+    motes.push(mote);
+    return mote;
+  });
+
+  const blastDisc = new THREE.Mesh(new THREE.CircleGeometry(1, 16), flameMat.clone());
+  blastDisc.rotation.x = -Math.PI / 2;
+  blastDisc.visible = false;
+  scene.add(blastDisc);
+
   let primed = false;
+  let sectorIndex = -1;
   let prev = { shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0 };
+  const cursor: Record<ShapeName, number> = { dart: 0, saucer: 0, cruiser: 0, rock: 0, battleship: 0, carrier: 0 };
 
-  const place = (object: THREE.Object3D, width: number, height: number, x: number, y: number, lift: number) => {
-    const point = worldOf(width, height, x, y, lift);
-    object.position.copy(point);
-    point.y = 0;
+  const emit = (pool: Mote[], at: THREE.Vector3, count: number, speed: number) => {
+    let left = count;
+    for (const mote of pool) {
+      if (left <= 0) break;
+      if (mote.life > 0) continue;
+      mote.life = mote.max * (0.65 + Math.random() * 0.45);
+      mote.mesh.visible = true;
+      mote.mesh.position.copy(at);
+      mote.mesh.position.y += 0.3;
+      mote.vel.set((Math.random() - 0.5) * speed, 0.2 + Math.random() * speed * 0.45, (Math.random() - 0.5) * speed);
+      left -= 1;
+    }
   };
 
-  const shout = (text: 'BOOM!' | 'ZAP!' | 'KRAK!', at: THREE.Vector3) => {
-    const free = words.find((item) => !item.sprite.visible && item.sprite.userData.word === text) ?? words.find((item) => item.sprite.userData.word === text);
-    if (!free) return;
-    free.sprite.position.copy(at);
-    free.sprite.position.y += 1.2;
-    free.sprite.visible = true;
-    free.age = 0;
-  };
-
-  const showShape = (slot: Slot, shape: string, color: string, scale: number) => {
-    const geo = geos[shape] ?? geos.saucer;
-    slot.body.geometry = geo;
-    slot.ink.geometry = geo;
-    slot.body.material = toon(color);
-    slot.group.scale.setScalar(scale);
-    slot.group.visible = true;
+  const boom = (at: THREE.Vector3, big: boolean) => {
+    emit(fires, at, big ? 6 : 3, big ? 3.2 : 2);
+    emit(smokes, at, big ? 4 : 2, big ? 1.6 : 1);
+    emit(debris, at, big ? 5 : 3, big ? 3.4 : 2.2);
   };
 
   return {
@@ -246,87 +310,128 @@ export function createComicView(canvas: HTMLCanvasElement) {
     },
     render(state: GameState) {
       const theme = sectorTheme(state.sector);
-      renderer.setClearColor(theme.sky[0]);
-      scene.fog = new THREE.Fog(new THREE.Color(theme.sky[1]), state.warpTimer > 0 ? 12 : 18, state.warpTimer > 0 ? 40 : 54);
-      (ground.material as THREE.MeshToonMaterial).color.set(theme.sky[2]);
-      const shipPoint = worldOf(state.width, state.height, state.shipX, state.shipY, 0.75);
+      const sector = theme.index % 5;
+      if (sector !== sectorIndex) {
+        sectorIndex = sector;
+        skyMat.map = skyTextures[sector];
+        skyMat.needsUpdate = true;
+        groundPaint.uniforms.tint.value.set(SECTOR_GROUND[sector]);
+        groundPaint.uniforms.detail.value = 2.2;
+        groundPaint.uniforms.paint.value = groundTex;
+      }
+      const fogColor = fog.color;
+      fogColor.set(state.warpTimer > 0 ? '#31485c' : SECTOR_FOG[sector]);
+      fog.near = state.warpTimer > 0 ? 12 : 18;
+      fog.far = state.warpTimer > 0 ? 36 : 48;
+      renderer.setClearColor(fogColor, 1);
+      const warp = state.warpTimer > 0 ? 1 : 0;
+      for (const material of paints) {
+        material.uniforms.rimColor.value.set(SECTOR_RIM[sector]);
+        syncFog(material, fogColor, fog.near, fog.far, warp);
+      }
+      syncFog(outline, fogColor, fog.near, fog.far, 0);
+      shipPaint.uniforms.flash.value = state.hitFlash > 0 ? 1 : 0;
+
+      const shipPoint = worldOf(state.width, state.height, state.shipX, state.shipY, 0.7);
       ship.position.copy(shipPoint);
-      ship.visible = state.mode !== 'ready' || true;
+      ship.rotation.z = (0.5 - state.shipX / Math.max(1, state.width)) * 0.4;
+      ship.rotation.y = (state.shipX / Math.max(1, state.width) - 0.5) * 0.35;
+      shadow.position.set(shipPoint.x, 0.02, shipPoint.z);
       const aim = state.laserTimer > 0 ? state.laserAngle + Math.PI / 2 : (state.shipX / Math.max(1, state.width) - 0.5) * 0.7;
       const yaw = THREE.MathUtils.clamp(aim, -LOOK_LIMIT, LOOK_LIMIT);
       const pitch = THREE.MathUtils.clamp((state.shipY / Math.max(1, state.height) - 0.72) * -0.5, -0.25, 0.22);
-      camera.position.set(shipPoint.x * 0.35 + Math.sin(yaw) * 0.8, 6.2, shipPoint.z + 8.4);
+      const kick = Math.min(0.35, state.shake * 0.02);
+      camera.position.set(shipPoint.x * 0.35 + Math.sin(yaw) * 0.8 + Math.sin(state.time * 47) * kick, 6.2, shipPoint.z + 8.4);
       camera.lookAt(shipPoint.x + Math.sin(yaw) * 3.5, 1.15 + pitch, shipPoint.z - 15);
+      sky.position.x = camera.position.x * 0.15;
+
+      strips.forEach((strip, index) => {
+        const travel = (state.time * 9 + index * 5.2) % 28;
+        strip.position.z = -14 - travel;
+      });
 
       shield.position.copy(shipPoint);
       shield.visible = state.shieldHits > 0;
       wingmen.forEach((drone) => {
         const side = drone.userData.side as number;
         drone.visible = state.wingmanTimer > 0;
-        drone.position.set(shipPoint.x + side * 1.15, shipPoint.y, shipPoint.z + 0.2);
+        drone.position.set(shipPoint.x + side * 1.15, shipPoint.y + 0.05, shipPoint.z + 0.15);
       });
       laser.visible = state.laserTimer > 0;
       if (state.laserTimer > 0) {
         const dirX = Math.cos(state.laserAngle);
         const dirZ = Math.sin(state.laserAngle);
-        laser.position.set(shipPoint.x + dirX * 2.2, shipPoint.y, shipPoint.z + dirZ * 4);
+        laser.position.set(shipPoint.x + dirX * 2.4, shipPoint.y, shipPoint.z + dirZ * 4.2);
         laser.lookAt(shipPoint.x + dirX * 8, shipPoint.y, shipPoint.z + dirZ * 12);
       }
 
-      enemies.forEach((slot) => {
-        slot.group.visible = false;
+      (Object.keys(cursor) as ShapeName[]).forEach((shape) => {
+        cursor[shape] = 0;
       });
-      state.enemies.slice(0, enemies.length).forEach((enemy, index) => {
-        const slot = enemies[index];
-        const color = colorFor(enemy, theme.enemy);
-        showShape(slot, enemy.shape, color, Math.max(0.45, enemy.r / 24));
-        place(slot.group, state.width, state.height, enemy.x, enemy.y, 0.35 * (enemy.r / 24));
+      (Object.keys(pools) as ShapeName[]).forEach((shape) => {
+        pools[shape].forEach((group) => {
+          group.visible = false;
+        });
       });
+      for (const enemy of state.enemies) {
+        const shape = shapeOf(enemy);
+        const group = pools[shape][cursor[shape]];
+        if (!group) continue;
+        cursor[shape] += 1;
+        group.visible = true;
+        group.position.copy(worldOf(state.width, state.height, enemy.x, enemy.y, 0.35 + enemy.r / 90));
+        const scale = Math.max(0.45, enemy.r / 20);
+        group.scale.setScalar(scale);
+        group.rotation.set(0, shape === 'rock' ? enemy.rot : 0, Math.sin(enemy.phase + state.time * 1.4) * 0.15);
+      }
 
-      bullets.forEach((mesh) => {
-        mesh.visible = false;
-      });
-      state.bullets.slice(0, bullets.length).forEach((bullet, index) => {
-        const mesh = bullets[index];
-        mesh.visible = true;
-        const point = worldOf(state.width, state.height, bullet.x, bullet.y, 0.6);
-        mesh.position.copy(point);
-      });
-      enemyShots.forEach((mesh) => {
-        mesh.visible = false;
-      });
-      state.enemyBullets.slice(0, enemyShots.length).forEach((bullet, index) => {
-        const mesh = enemyShots[index];
-        mesh.visible = true;
-        mesh.position.copy(worldOf(state.width, state.height, bullet.x, bullet.y, 0.55));
-      });
+  bulletMesh.count = Math.min(state.bullets.length, 40);
+      for (let index = 0; index < bulletMesh.count; index += 1) {
+        const bullet = state.bullets[index];
+        dummy.position.copy(worldOf(state.width, state.height, bullet.x, bullet.y, 0.6));
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        bulletMesh.setMatrixAt(index, dummy.matrix);
+      }
+      bulletMesh.instanceMatrix.needsUpdate = true;
+      shotMesh.count = Math.min(state.enemyBullets.length, 28);
+      for (let index = 0; index < shotMesh.count; index += 1) {
+        const bullet = state.enemyBullets[index];
+        dummy.position.copy(worldOf(state.width, state.height, bullet.x, bullet.y, 0.55));
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        shotMesh.setMatrixAt(index, dummy.matrix);
+      }
+      shotMesh.instanceMatrix.needsUpdate = true;
 
-      pickups.forEach((slot) => {
-        slot.group.visible = false;
+      pickups.forEach((group) => {
+        group.visible = false;
       });
       state.pickups.slice(0, pickups.length).forEach((pickup, index) => {
-        const slot = pickups[index];
-        showShape(slot, 'saucer', pickupColor(pickup.kind), 0.7);
-        place(slot.group, state.width, state.height, pickup.x, pickup.y, 0.55);
-        slot.group.rotation.y = state.time * 2 + pickup.spin;
+        const group = pickups[index];
+        group.visible = true;
+        group.position.copy(worldOf(state.width, state.height, pickup.x, pickup.y, 0.55));
+        group.rotation.y = state.time * 1.6 + pickup.spin;
+        const glow = group.getObjectByName('pickup-glow') as THREE.Mesh | undefined;
+        const material = glow?.material as THREE.MeshBasicMaterial | undefined;
+        if (material) material.color.set(pickupColor(pickup.kind));
       });
 
-      bursts.forEach((mesh) => {
-        mesh.visible = false;
-      });
-      state.particles.slice(0, bursts.length).forEach((particle, index) => {
-        const mesh = bursts[index];
-        mesh.visible = true;
-        mesh.material = toon(particle.color);
-        mesh.position.copy(worldOf(state.width, state.height, particle.x, particle.y, 0.5 + particle.r * 0.02));
-        mesh.scale.setScalar(Math.max(0.15, particle.r / 8));
-      });
+      bomb.visible = state.bomb != null;
+      if (state.bomb) {
+        bomb.position.copy(worldOf(state.width, state.height, state.bomb.x, state.bomb.y, 0.5));
+        const pulse = 1 + Math.sin(state.bomb.pulse * 8) * 0.08;
+        bomb.scale.setScalar(0.85 * pulse);
+      }
 
       if (state.boss) {
         boss.visible = true;
-        boss.position.copy(worldOf(state.width, state.height, state.boss.x, state.boss.y, 0.8));
-        bossBody.material = toon('#243246');
-        bossCore.material = toon(theme.enemy);
+        boss.position.copy(worldOf(state.width, state.height, state.boss.x, state.boss.y, 0.9));
+        boss.scale.setScalar(1.65);
+        bossCoreMat.color.set(SECTOR_CORE[sector]);
+        bossCoreHalo.color.set(SECTOR_CORE[sector]);
         beam.visible = state.boss.pattern === 1 && state.boss.beam > 0.25;
         if (beam.visible) {
           const angle = Math.PI / 2 + Math.sin(state.boss.beam) * 1.05;
@@ -346,33 +451,75 @@ export function createComicView(canvas: HTMLCanvasElement) {
         beam.visible = false;
       }
 
-      words.forEach((word) => {
-        if (!word.sprite.visible) return;
-        word.age += 0.016;
-        word.sprite.position.y += 0.02;
-        const material = word.sprite.material as THREE.SpriteMaterial;
-        material.opacity = Math.max(0, 1 - word.age / 0.7);
-        if (word.age > 0.7) word.sprite.visible = false;
+      const dt = 0.016;
+      for (const mote of motes) {
+        if (mote.life <= 0) {
+          mote.mesh.visible = false;
+          continue;
+        }
+        mote.life -= dt;
+        mote.mesh.position.addScaledVector(mote.vel, dt);
+        mote.vel.y -= dt * 0.6;
+        const fade = Math.max(0, mote.life / mote.max);
+        const material = mote.mesh.material as THREE.MeshBasicMaterial;
+        if (material.opacity !== undefined && material.map) material.opacity = fade;
+        const scale = mote.grow * (1.15 - fade * 0.4);
+        mote.mesh.scale.setScalar(Math.max(0.05, scale));
+        if (mote.mesh.geometry.type === 'PlaneGeometry') mote.mesh.lookAt(camera.position);
+        if (mote.life <= 0) mote.mesh.visible = false;
+      }
+
+      state.particles.slice(0, fires.length).forEach((particle, index) => {
+        const dusty = particle.color === '#8A7564' || particle.color === '#C4B4A4';
+        const pool = dusty ? debris : fires;
+        const mote = pool[index % pool.length];
+        if (mote.life > 0.2) return;
+        mote.life = Math.max(0.05, particle.life);
+        mote.max = Math.max(0.2, particle.maxLife);
+        mote.mesh.visible = true;
+        mote.mesh.position.copy(worldOf(state.width, state.height, particle.x, particle.y, 0.45 + particle.r * 0.02));
+        mote.grow = dusty ? 0.45 : Math.max(0.35, particle.r / 10);
+        mote.vel.set(particle.vx / 220, 0.2, particle.vy / 220);
       });
 
+      if (state.blast) {
+        blastDisc.visible = true;
+        const grow = Math.min(1, state.blast.age / 0.35);
+        const radius = (state.blast.maxRadius / Math.max(1, state.width)) * LANE_WIDTH * grow;
+        blastDisc.position.copy(worldOf(state.width, state.height, state.blast.x, state.blast.y, 0.35));
+        blastDisc.scale.setScalar(Math.max(0.2, radius));
+        (blastDisc.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - state.blast.age / 1.2);
+        const flare = fires[0];
+        flare.life = 0.45;
+        flare.max = 0.45;
+        flare.vel.set(0, 0, 0);
+        flare.grow = Math.max(1.1, radius * 0.28);
+        flare.mesh.visible = true;
+        flare.mesh.position.copy(blastDisc.position);
+        flare.mesh.position.y += 0.7;
+        flare.mesh.lookAt(camera.position);
+        flare.mesh.scale.setScalar(flare.grow);
+        (flare.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.2, 1 - state.blast.age / 1.1);
+      } else {
+        blastDisc.visible = false;
+      }
+
+      const shipBoom = shipPoint.clone();
       if (primed) {
-        if (state.shotsFired > prev.shots) {
-          audio.shoot();
-          if (state.laserTimer > 0) shout('ZAP!', shipPoint.clone());
+        if (state.shotsFired > prev.shots) audio.shoot();
+        if (state.score > prev.score) audio.hit();
+        if (state.lives < prev.lives) {
+          audio.explosion();
+          boom(shipBoom, true);
         }
-        if (state.score > prev.score) {
-          audio.hit();
-          if (state.score - prev.score >= 200) shout('KRAK!', shipPoint.clone().setZ(shipPoint.z - 6));
-        }
-        if (state.lives < prev.lives) audio.explosion();
         if (state.blast && !prev.blast) {
           audio.explosion();
-          shout('BOOM!', worldOf(state.width, state.height, state.blast.x, state.blast.y, 1.4));
+          boom(worldOf(state.width, state.height, state.blast.x, state.blast.y, 0.8), true);
         }
         if (state.boss && !prev.boss) audio.bossIntro();
         if (!state.boss && prev.boss) {
           audio.bossWin();
-          shout('BOOM!', shipPoint.clone());
+          boom(shipPoint.clone().setZ(shipPoint.z - 8), true);
         }
         if (state.enemyBullets.length > prev.enemyShots + 2) audio.bossAttack();
         if (state.pickups.length < prev.pickups) audio.pickup();
@@ -403,20 +550,12 @@ export function createComicView(canvas: HTMLCanvasElement) {
   };
 }
 
-function colorFor(enemy: Enemy, tint: string): string {
-  if (enemy.shape === 'battleship') return '#c5ced8';
-  if (enemy.shape === 'carrier') return '#8ea0b0';
-  if (enemy.shape === 'dart') return '#ff5a7a';
-  if (enemy.shape === 'cruiser' || enemy.shape === 'rock') return '#e2b15a';
-  return tint;
-}
-
 function pickupColor(kind: string): string {
-  if (kind === 'shield') return '#9debff';
-  if (kind === 'wingman') return '#e7f3ff';
-  if (kind === 'warp') return '#c9d4ff';
-  if (kind === 'bomb') return '#ff7a1a';
-  if (kind === 'laser') return '#ff4a2a';
-  if (kind === 'rapid') return '#f4feff';
-  return '#7ef0ff';
+  if (kind === 'shield') return '#5ee7e4';
+  if (kind === 'wingman') return '#f4ede2';
+  if (kind === 'warp') return '#9eb6ff';
+  if (kind === 'bomb') return '#ff6a2a';
+  if (kind === 'laser') return '#ff4f8a';
+  if (kind === 'rapid') return '#fff1c2';
+  return '#5ee7e4';
 }
