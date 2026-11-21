@@ -1,3 +1,5 @@
+import { DRAG_FOLLOW } from './constants';
+
 export interface ControlFrame {
   moveActive: boolean;
   targetX: number;
@@ -250,8 +252,8 @@ export class Controls {
           stickY = stick.y;
         } else {
           moveActive = true;
-          targetX = track.shipX + (track.x - track.originX);
-          targetY = track.shipY + (track.y - track.originY);
+          targetX = track.shipX + (track.x - track.originX) * DRAG_FOLLOW;
+          targetY = track.shipY + (track.y - track.originY) * DRAG_FOLLOW;
         }
       }
     }

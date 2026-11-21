@@ -16,6 +16,7 @@ import {
   FIRE_INTERVAL,
   INVULN_TIME,
   KEYBOARD_SPEED,
+  STICK_SPEED,
   LASER_AIM_DEADZONE,
   LASER_DPS,
   LASER_DURATION,
@@ -329,8 +330,8 @@ function moveShip(state: GameState, intent: Intent, dt: number): void {
     state.shipX = intent.targetX;
     state.shipY = intent.targetY;
   } else {
-    state.shipX += (intent.keyX + intent.stickX) * KEYBOARD_SPEED * dt;
-    state.shipY += (intent.keyY + intent.stickY) * KEYBOARD_SPEED * dt;
+    state.shipX += (intent.keyX * KEYBOARD_SPEED + intent.stickX * STICK_SPEED) * dt;
+    state.shipY += (intent.keyY * KEYBOARD_SPEED + intent.stickY * STICK_SPEED) * dt;
   }
   clampShip(state);
 }

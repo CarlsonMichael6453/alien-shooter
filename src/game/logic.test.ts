@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO } from './constants';
+import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO, STICK_SPEED } from './constants';
 import { createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
 import { createRng } from './rng';
 
@@ -165,6 +165,10 @@ describe('simulation', () => {
 
     step(state, idleIntent({ keyX: 1 }), 0.05);
     assert.ok(Math.abs(state.shipX - (before + KEYBOARD_SPEED * 0.05)) < 0.001);
+
+    const stuck = state.shipX;
+    step(state, idleIntent({ stickX: 1 }), 0.05);
+    assert.ok(Math.abs(state.shipX - (stuck + STICK_SPEED * 0.05)) < 0.001);
   });
 
   it('spends one round per bullet and stops when the magazine is empty', () => {
