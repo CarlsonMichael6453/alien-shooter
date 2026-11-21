@@ -94,8 +94,17 @@ export function defaultLayout(field: Field): HudLayout {
     },
     {
       id: 'inventory',
-      x: 14 / width,
-      y: (field.height - Math.max(8, field.bottom) - 16 - 56) / height,
+      x: (width - 16 - elementSize('inventory', 1, 3).w) / width,
+      y:
+        (field.height -
+          Math.max(8, field.bottom) -
+          16 -
+          56 -
+          12 -
+          FIRE_BUTTON_SIZE -
+          12 -
+          elementSize('inventory', 1, 3).h) /
+        height,
       scale: 1,
       opacity: 1,
       visible: true,
