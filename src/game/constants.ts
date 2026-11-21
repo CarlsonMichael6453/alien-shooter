@@ -8,7 +8,7 @@ export const BULLET_SPEED = 780;
 export const FIRE_INTERVAL = 0.08;
 export const KEYBOARD_SPEED = 340;
 /** Full-deflection joystick speed. */
-export const STICK_SPEED = 545;
+export const STICK_SPEED = 530;
 /** Drag mode moves the ship this many times the finger travel. Was 1. */
 export const DRAG_FOLLOW = 1.5;
 export const INVULN_TIME = 1.5;
