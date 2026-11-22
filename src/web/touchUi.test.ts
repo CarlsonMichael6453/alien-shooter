@@ -15,4 +15,9 @@ describe('touch controls over buttons', () => {
   it('lets a power-up slot consume the touch without firing a click', () => {
     assert.deepEqual(classifyTouch(false, 'power'), { play: false, cancel: true, dropPlayPointer: false });
   });
+
+  it('keeps a finger that landed on the fire button graphic', () => {
+    assert.deepEqual(classifyTouch(true, 'play', true), { play: true, cancel: true, dropPlayPointer: false });
+    assert.equal(classifyTouch(true, 'play').dropPlayPointer, true);
+  });
 });

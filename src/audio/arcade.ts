@@ -74,10 +74,14 @@ class ArcadeAudio {
   }
 
   unlock(): void {
-    const ctx = this.ensure();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') void ctx.resume();
-    this.unlocked = true;
+    try {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') void ctx.resume();
+      this.unlocked = true;
+    } catch {
+      // iOS only allows AudioContext from a gesture, and may still throw. Ignore it.
+    }
   }
 
   applySettings(next: AudioSettings): void {
@@ -93,9 +97,15 @@ class ArcadeAudio {
 
   private ensure(): AudioContext | null {
     if (this.ctx) return this.ctx;
+    if (typeof window === 'undefined') return null;
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return null;
-    const ctx = new Ctx();
+    let ctx: AudioContext;
+    try {
+      ctx = new Ctx();
+    } catch {
+      return null;
+    }
     const music = ctx.createGain();
     const sfx = ctx.createGain();
     music.connect(ctx.destination);
@@ -151,6 +161,14 @@ class ArcadeAudio {
   }
 
   syncLaser(beamOn: boolean, paused: boolean): void {
+    try {
+      this.syncLaserUnsafe(beamOn, paused);
+    } catch {
+      // Never let the beam synth abort the frame that fires bullets.
+    }
+  }
+
+  private syncLaserUnsafe(beamOn: boolean, paused: boolean): void {
     const intent = laserIntent(beamOn, paused);
     if (intent === 'off') {
       this.laser?.end();
@@ -188,6 +206,14 @@ class ArcadeAudio {
   }
 
   tickMusic(sector: number, boss: boolean): void {
+    try {
+      this.tickMusicUnsafe(sector, boss);
+    } catch {
+      // Music must not stop the game loop.
+    }
+  }
+
+  private tickMusicUnsafe(sector: number, boss: boolean): void {
     const ctx = this.ctx;
     if (!ctx || !this.unlocked || !this.settings.musicOn) return;
     if (sector !== this.sector || boss !== this.boss) {

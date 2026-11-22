@@ -46,12 +46,18 @@ export function bindControls(
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
       const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
-      const decision = classifyTouch(onUi, role);
+      const decision = classifyTouch(onUi, role, controls.fireId === touch.identifier);
       if (decision.dropPlayPointer) controls.pointerUp(touch.identifier);
       if (decision.play) play = true;
       if (!decision.cancel) cancel = false;
     }
-    if (play) onPress();
+    if (play) {
+      try {
+        onPress();
+      } catch {
+        // A sound or wake-lock failure must not cancel the finger already claimed.
+      }
+    }
     if (cancel && event.cancelable) event.preventDefault();
   };
 
@@ -75,11 +81,32 @@ export function bindControls(
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse') return;
-    if (isUiOpen() || uiNode(event.target)) return;
-    if (event.cancelable) event.preventDefault();
+    if (isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
     const ship = getShip();
-    if (controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y) === 'play') onPress();
+    if (uiNode(event.target)) {
+      const before = controls.fireId;
+      const role = controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y);
+      if (controls.fireId != null && controls.fireId !== before) {
+        if (event.cancelable) event.preventDefault();
+        try {
+          onPress();
+        } catch {
+          // Keep the fire button even if audio setup throws.
+        }
+        return;
+      }
+      if (role === 'play') controls.pointerUp(event.button === 0 ? -1 : -2);
+      return;
+    }
+    if (event.cancelable) event.preventDefault();
+    if (controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y) === 'play') {
+      try {
+        onPress();
+      } catch {
+        // Keep the press.
+      }
+    }
   };
 
   const onPointerMove = (event: PointerEvent) => {

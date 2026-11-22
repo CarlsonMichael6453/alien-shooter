@@ -348,7 +348,13 @@ export function GameScreen() {
           controlsRef.current.consumePower();
         }
         if (controlsRef.current.consumeChrome()) openUiRef.current('settings');
-        if (ratingLoadedRef.current && !frozen && state.lives < audioPrev.current.lives) pulseHaptic(audioRef.current.vibrate);
+        if (ratingLoadedRef.current && !frozen && state.lives < audioPrev.current.lives) {
+          try {
+            pulseHaptic(audioRef.current.vibrate);
+          } catch {
+            // Haptics never gate the simulation.
+          }
+        }
         if (ratingLoadedRef.current && !frozen && modeBefore !== 'over' && state.mode === 'over') {
           const now = Date.now();
           const board = recordRun(profileRef.current, state.score, state.wave, now);
@@ -385,7 +391,13 @@ export function GameScreen() {
           cueRef.current = tutorial.cue;
           setCue(tutorial.cue);
         }
-        if (Platform.OS === 'web') syncAudio(state, audioPrev.current, frozen);
+        if (Platform.OS === 'web') {
+          try {
+            syncAudio(state, audioPrev.current, frozen);
+          } catch {
+            // A Web Audio failure must not stop the frame, or the fire button dies with it.
+          }
+        }
         canvasRef.current?.draw(state);
         pickupsRef.current?.sync(state);
         publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
@@ -540,7 +552,13 @@ export function GameScreen() {
             profile={profile}
             onPlay={() => {
               startRef.current = true;
-              if (Platform.OS === 'web') audio.unlock();
+              if (Platform.OS === 'web') {
+                try {
+                  audio.unlock();
+                } catch {
+                  // Starting the audio context must not block Play.
+                }
+              }
             }}
             onPause={() => openUi('pause', 'none')}
             onResume={() => openUi('none')}
