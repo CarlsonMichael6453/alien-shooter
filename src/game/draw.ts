@@ -1,3 +1,4 @@
+import { SHIELD_HOT, SHIELD_NEON, hexPoints } from './abilityArt';
 import { beamNose } from './logic';
 import { sectorTheme } from './sectors';
 import type { Boss, Enemy, GameState, Pickup } from './types';
@@ -24,12 +25,8 @@ export function paintGame(painter: Painter, state: GameState): void {
   }
 
   painter.save();
-  if (state.shake > 0) {
-    painter.translate(
-      Math.sin(state.time * 55) * state.shake * 7,
-      Math.cos(state.time * 63) * state.shake * 5,
-    );
-  }
+  const shake = worldShake(state);
+  if (shake.x !== 0 || shake.y !== 0) painter.translate(shake.x, shake.y);
 
   for (const particle of state.particles) {
     const alpha = clamp01(particle.life / particle.maxLife);
@@ -236,19 +233,26 @@ function drawHealth(painter: Painter, enemy: Enemy): void {
   if (ratio > 0) painter.fillRoundRect(x, y, Math.max(3, width * ratio), 5, 2, color);
 }
 
+export function pickupBob(time: number, spin: number): number {
+  return Math.sin(time * 4 + spin) * 2;
+}
+
+export function worldShake(state: { time: number; shake: number }): { x: number; y: number } {
+  if (state.shake <= 0) return { x: 0, y: 0 };
+  return {
+    x: Math.sin(state.time * 55) * state.shake * 7,
+    y: Math.cos(state.time * 63) * state.shake * 5,
+  };
+}
+
 function drawPickup(painter: Painter, pickup: Pickup, time: number): void {
+  // Ability pickups are the same AbilityGlyph as the HUD slots, placed by ArenaPickups.
+  if (pickup.kind !== 'ammo') return;
   painter.save();
   painter.translate(pickup.x, pickup.y);
-  const bob = Math.sin(time * 4 + pickup.spin) * 2;
+  const bob = pickupBob(time, pickup.spin);
   painter.translate(0, bob);
-  if (pickup.kind === 'ammo') drawAmmoIcon(painter, pickup.amount);
-  else if (pickup.kind === 'rapid') drawRapidIcon(painter);
-  else if (pickup.kind === 'bomb') drawMushroomIcon(painter);
-  else if (pickup.kind === 'shield') drawShieldIcon(painter);
-  else if (pickup.kind === 'wingman') drawWingmanIcon(painter);
-  else if (pickup.kind === 'warp') drawWarpIcon(painter);
-  else if (pickup.kind === 'missiles') drawMissileIcon(painter);
-  else drawLaserIcon(painter);
+  drawAmmoIcon(painter, pickup.amount);
   painter.restore();
 }
 
@@ -256,31 +260,6 @@ function drawAmmoIcon(painter: Painter, amount: number): void {
   painter.fillRoundRect(-20, -16, 40, 32, 8, '#12344A');
   painter.strokeCircle(0, 0, 22, 'rgba(126,240,255,0.9)', 2);
   drawDigits(painter, String(amount), 0, 1, 2.3, '#E8FBFF');
-}
-
-function drawRapidIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#102033');
-  painter.strokeCircle(0, 0, 20, '#D6F6FF', 2);
-  for (const tilt of [-0.62, -0.22, 0.22, 0.62]) {
-    painter.save();
-    painter.rotate(tilt);
-    painter.fillRoundRect(-1.3, -17, 2.6, 9, 1.3, '#F4FEFF');
-    painter.fillCircle(0, -17, 1.7, '#F4FEFF');
-    painter.restore();
-  }
-}
-
-function drawMushroomIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#140E0C');
-  painter.strokeCircle(0, 0, 20, '#A84820', 1.5);
-  drawMushroomCloud(painter, 1, 0);
-}
-
-function drawLaserIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#2A0C0C');
-  painter.strokeCircle(0, 0, 20, '#FF4A2A', 2);
-  painter.fillRoundRect(-5, -14, 10, 26, 4, '#FF6A22');
-  painter.fillRoundRect(-2.2, -14, 4.4, 26, 2, '#FFE08A');
 }
 
 function drawBomb(painter: Painter, bomb: { x: number; y: number; age: number; pulse: number }): void {
@@ -517,9 +496,12 @@ function drawBoss(painter: Painter, boss: Boss, tint: string, time: number): voi
 }
 
 function drawShield(painter: Painter, state: GameState): void {
-  const flicker = 0.45 + Math.sin(state.time * 8) * 0.15;
-  painter.strokeCircle(state.shipX, state.shipY, 28, rgba('#9DEBFF', flicker), 3);
-  painter.fillCircle(state.shipX - 8, state.shipY - 8, 6, 'rgba(255,255,255,0.18)');
+  const flicker = 0.72 + Math.sin(state.time * 8) * 0.18;
+  const outer = hexPoints(state.shipX, state.shipY, 42);
+  const inner = hexPoints(state.shipX, state.shipY, 33);
+  painter.strokePolygon(outer, rgba(SHIELD_NEON, 0.34 * flicker), 11);
+  painter.strokePolygon(outer, rgba(SHIELD_NEON, flicker), 2.6);
+  painter.strokePolygon(inner, rgba(SHIELD_HOT, 0.92 * flicker), 1.8);
 }
 
 function drawWingmen(painter: Painter, state: GameState): void {
@@ -536,32 +518,6 @@ function drawWingmen(painter: Painter, state: GameState): void {
     );
     painter.fillCircle(x, y + 8, 2.4, '#7EF0FF');
   }
-}
-
-function drawShieldIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#102433');
-  painter.strokeCircle(0, 0, 14, 'rgba(157,235,255,0.9)', 3);
-  painter.fillCircle(-4, -4, 3, 'rgba(255,255,255,0.55)');
-}
-
-function drawWingmanIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#102033');
-  painter.fillPolygon(
-    [
-      [-8, 6],
-      [-2, -10],
-      [2, 4],
-    ],
-    '#E7F3FF',
-  );
-  painter.fillPolygon(
-    [
-      [8, 6],
-      [2, -10],
-      [-2, 4],
-    ],
-    '#B7D4EA',
-  );
 }
 
 function drawMissile(painter: Painter, missile: { x: number; y: number; angle: number }): void {
@@ -584,26 +540,6 @@ function drawMissile(painter: Painter, missile: { x: number; y: number; angle: n
   painter.restore();
 }
 
-function drawMissileIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#1A2430');
-  painter.fillCircle(0, 8, 3.2, 'rgba(210,220,230,0.7)');
-  painter.fillCircle(0, 3, 2.2, 'rgba(210,220,230,0.45)');
-  painter.fillPolygon(
-    [
-      [0, -12],
-      [5, 6],
-      [-5, 6],
-    ],
-    '#F0C14A',
-  );
-}
-
-function drawWarpIcon(painter: Painter): void {
-  painter.fillCircle(0, 0, 20, '#161228');
-  painter.strokeCircle(0, 0, 13, 'rgba(150, 170, 255, 0.9)', 2);
-  painter.fillCircle(0, 0, 4, '#C9D4FF');
-  painter.fillRect(-1, -9, 2, 8, '#E4E9FF');
-}
 
 function drawCruiser(painter: Painter, enemy: Enemy): void {
   const { r } = enemy;

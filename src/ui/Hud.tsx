@@ -13,6 +13,7 @@ import {
 import type { TutorialCue } from './tutorial';
 import type { AudioSettings } from '../audio/arcade';
 import type { ControlScheme } from './controlsMode';
+import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 
 export interface HudModel {
@@ -449,7 +450,7 @@ function ElementBody({
             },
           ]}
         >
-          <PowerGlyph kind={kind} />
+          <AbilityGlyph kind={kind} size={slot} />
         </View>
       ))}
     </View>
@@ -777,67 +778,6 @@ function roundTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function PowerGlyph({ kind }: { kind: PowerKind }) {
-  if (kind === 'rapid') {
-    return (
-      <View style={styles.glyph}>
-        <View style={[styles.streak, { transform: [{ rotate: '-24deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '-8deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '8deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '24deg' }] }]} />
-      </View>
-    );
-  }
-  if (kind === 'bomb') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.stemShade} />
-        <View style={styles.stemHot} />
-        <View style={styles.lobeL} />
-        <View style={styles.lobeR} />
-        <View style={styles.lobeC} />
-        <View style={styles.lobeHot} />
-        <View style={styles.ash} />
-      </View>
-    );
-  }
-  if (kind === 'laser') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.beam} />
-      </View>
-    );
-  }
-  if (kind === 'shield') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.shieldBubble} />
-      </View>
-    );
-  }
-  if (kind === 'missiles') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.missileTrail} />
-        <View style={styles.missileBody} />
-      </View>
-    );
-  }
-  if (kind === 'wingman') {
-    return (
-      <View style={styles.glyph}>
-        <View style={[styles.drone, { left: 4 }]} />
-        <View style={[styles.drone, { right: 4 }]} />
-      </View>
-    );
-  }
-  return (
-    <View style={styles.glyph}>
-      <View style={styles.warpRing} />
-    </View>
-  );
-}
-
 function formatScore(value: number): string {
   return Math.max(0, Math.floor(value))
     .toString()
@@ -950,84 +890,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   slot: {
-    backgroundColor: 'rgba(8, 14, 28, 0.88)',
-    borderWidth: 2,
-    borderColor: 'rgba(232, 244, 255, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glyph: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  streak: {
-    position: 'absolute',
-    width: 3,
-    height: 14,
-    borderRadius: 2,
-    backgroundColor: '#F4FEFF',
-    top: 2,
-  },
-  stemShade: {
-    position: 'absolute',
-    top: 12,
-    width: 8,
-    height: 13,
-    borderRadius: 3,
-    backgroundColor: '#4A342C',
-  },
-  stemHot: {
-    position: 'absolute',
-    top: 13,
-    width: 3,
-    height: 11,
-    borderRadius: 2,
-    backgroundColor: '#E25820',
-  },
-  lobeL: {
-    position: 'absolute',
-    top: 6,
-    left: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#6A3424',
-  },
-  lobeR: {
-    position: 'absolute',
-    top: 7,
-    right: 2,
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: '#8A3A22',
-  },
-  lobeC: {
-    position: 'absolute',
-    top: 2,
-    width: 14,
-    height: 12,
-    borderRadius: 7,
-    backgroundColor: '#D04A1C',
-  },
-  lobeHot: {
-    position: 'absolute',
-    top: 3,
-    width: 7,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#FFE0A4',
-  },
-  ash: {
-    position: 'absolute',
-    top: 5,
-    left: 1,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2A1C18',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   sectorName: {
     color: '#E7F6FF',
@@ -1074,51 +940,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     textAlign: 'center',
-  },
-  shieldBubble: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#9DEBFF',
-    backgroundColor: 'rgba(157,235,255,0.2)',
-  },
-  drone: {
-    position: 'absolute',
-    top: 8,
-    width: 7,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: '#E7F3FF',
-  },
-  missileBody: {
-    position: 'absolute',
-    top: 3,
-    width: 6,
-    height: 14,
-    borderRadius: 3,
-    backgroundColor: '#F0C14A',
-  },
-  missileTrail: {
-    position: 'absolute',
-    top: 16,
-    width: 3,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: '#D5DEE8',
-  },
-  warpRing: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#C9D4FF',
-  },
-  beam: {
-    width: 7,
-    height: 22,
-    borderRadius: 4,
-    backgroundColor: '#FF5A2A',
   },
   life: {
     fontWeight: '700',

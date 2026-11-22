@@ -19,6 +19,7 @@ import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
 import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
+import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
@@ -125,6 +126,7 @@ export function GameScreen() {
   const stateRef = useRef<GameState | null>(null);
   const controlsRef = useRef(new Controls());
   const canvasRef = useRef<GameCanvasHandle>(null);
+  const pickupsRef = useRef<ArenaPickupHandle>(null);
   const playfieldRef = useRef(playfield);
   const offsetRef = useRef(0);
   const bottomRef = useRef(14);
@@ -359,6 +361,7 @@ export function GameScreen() {
         }
         if (Platform.OS === 'web') syncAudio(state, audioPrev.current);
         canvasRef.current?.draw(state);
+        pickupsRef.current?.sync(state);
         publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
@@ -428,6 +431,7 @@ export function GameScreen() {
       <View pointerEvents="box-none" style={{ width: playfield.width, height: playfield.height }}>
         <View pointerEvents="none" style={styles.playfield}>
           <GameCanvas ref={canvasRef} width={playfield.width} height={playfield.height} />
+          <ArenaPickups ref={pickupsRef} />
         </View>
         {layout ? (
           <Overlay

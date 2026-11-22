@@ -16,6 +16,7 @@
     "react-native": "0.88.1",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.11.1",
+    "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
     "react-native-worklets": "0.13.0"
   },
@@ -31,7 +32,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx --test src/game/controls.test.ts src/game/logic.test.ts src/game/sectors.test.ts src/ui/tutorial.test.ts src/ui/hudLayout.test.ts src/web/touchUi.test.ts src/feedback/mailto.test.ts src/feedback/ratingPrompt.test.ts src/audio/arcade.test.ts",
+    "test": "tsx --test src/game/abilityArt.test.ts src/game/controls.test.ts src/game/logic.test.ts src/game/sectors.test.ts src/ui/tutorial.test.ts src/ui/hudLayout.test.ts src/web/touchUi.test.ts src/feedback/mailto.test.ts src/feedback/ratingPrompt.test.ts src/audio/arcade.test.ts",
     "test:gear": "node scripts/gear-touch-check.cjs",
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web && node scripts/patch-web-export.js",

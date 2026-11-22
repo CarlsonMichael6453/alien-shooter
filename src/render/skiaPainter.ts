@@ -1,4 +1,4 @@
-import { PaintStyle, Skia, TileMode, type SkCanvas } from '@shopify/react-native-skia';
+import { PaintStyle, Skia, StrokeJoin, TileMode, type SkCanvas } from '@shopify/react-native-skia';
 import type { Painter } from './painter';
 
 interface Disposable {
@@ -59,6 +59,16 @@ export function createSkiaPainter(canvas: SkCanvas): SkiaPainter {
       for (let i = 1; i < points.length; i += 1) builder.lineTo(points[i][0], points[i][1]);
       builder.close();
       canvas.drawPath(track(builder.detach()), paintOf(color));
+    },
+    strokePolygon(points, color, width) {
+      if (points.length < 3) return;
+      const builder = track(Skia.PathBuilder.Make());
+      builder.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i += 1) builder.lineTo(points[i][0], points[i][1]);
+      builder.close();
+      const paint = paintOf(color, width);
+      paint.setStrokeJoin(StrokeJoin.Round);
+      canvas.drawPath(track(builder.detach()), paint);
     },
     fillRoundRect(x, y, w, h, radius, color) {
       const r = Math.max(0, Math.min(radius, w / 2, h / 2));
