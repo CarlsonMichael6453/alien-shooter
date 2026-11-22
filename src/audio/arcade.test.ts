@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseAudioSettings } from './arcade';
+import { laserIntent, parseAudioSettings } from './arcade';
 
 describe('audio settings', () => {
   it('starts with music and effects on', () => {
@@ -19,5 +19,12 @@ describe('audio settings', () => {
     assert.equal(settings.musicOn, false);
     assert.equal(settings.sfxOn, true);
     assert.deepEqual(parseAudioSettings('nope').musicOn, true);
+  });
+
+  it('plays the laser only while the beam is up and the run is not paused', () => {
+    assert.equal(laserIntent(true, false), 'play');
+    assert.equal(laserIntent(true, true), 'suspend');
+    assert.equal(laserIntent(false, false), 'off');
+    assert.equal(laserIntent(false, true), 'off');
   });
 });

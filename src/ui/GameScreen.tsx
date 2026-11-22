@@ -385,7 +385,7 @@ export function GameScreen() {
           cueRef.current = tutorial.cue;
           setCue(tutorial.cue);
         }
-        if (Platform.OS === 'web') syncAudio(state, audioPrev.current);
+        if (Platform.OS === 'web') syncAudio(state, audioPrev.current, frozen);
         canvasRef.current?.draw(state);
         pickupsRef.current?.sync(state);
         publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
@@ -669,7 +669,13 @@ function publishHud(
   setHud(next);
 }
 
-function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; missileLeft: number; primed: boolean }): void {
+function syncAudio(
+  state: GameState,
+  prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; missileLeft: number; primed: boolean },
+  paused: boolean,
+): void {
+  const beam = state.mode === 'playing' && state.laserTimer > 0;
+  audio.syncLaser(beam, paused);
   if (prev.primed) {
     if (state.shotsFired > prev.shots) audio.shoot();
     if (state.score > prev.score) audio.hit();
@@ -684,7 +690,6 @@ function syncAudio(state: GameState, prev: { shots: number; score: number; lives
     if (state.warpTimer > 0 && prev.warp === 0) audio.power('warp');
     if (state.rapidTimer > 0 && prev.rapid === 0) audio.power('rapid');
     if (state.missileLeft > 0 && prev.missileLeft === 0) audio.power('missiles');
-    if (state.laserTimer > 0 && prev.laser === 0) audio.power('laser');
   }
   prev.primed = true;
   prev.shots = state.shotsFired;
