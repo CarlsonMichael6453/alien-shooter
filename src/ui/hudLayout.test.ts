@@ -14,6 +14,7 @@ import {
   mergeLayout,
   parseLayout,
   placeElement,
+  resetButtonLayout,
   saveLayout,
   type Field,
   type HudElement,
@@ -108,8 +109,19 @@ describe('hud layout', () => {
     assert.ok(!overlaps(stick, slots));
     assert.ok(!overlaps(fire, slots));
     assert.ok(slots.x + slots.w / 2 > phone.width / 2);
-    assert.ok(slots.x + slots.w > fire.x + fire.w - 1);
+    assert.ok(Math.abs(slots.x + slots.w - (fire.x + fire.w)) < 1);
     assert.ok(slots.y + slots.h <= fire.y + 0.5);
+    const rightGap = phone.width - (fire.x + fire.w);
+    const aboveHome = phone.height - phone.bottom - (fire.y + fire.h);
+    assert.ok(rightGap >= 6 && rightGap <= 10, `right gap ${rightGap}`);
+    assert.ok(aboveHome >= 6 && aboveHome <= 10, `home gap ${aboveHome}`);
+    const saved = layout.elements.map((element) => (element.id === 'fire' ? { ...element, x: 0.2, y: 0.4 } : element));
+    const kept = mergeLayout(saved, phone).elements.find((element) => element.id === 'fire')!;
+    assert.ok(Math.abs(kept.x - 0.2) < 0.001);
+    assert.ok(Math.abs(kept.y - 0.4) < 0.001);
+    const reset = resetButtonLayout({ elements: saved }, phone).elements.find((element) => element.id === 'fire')!;
+    assert.ok(Math.abs(reset.x - fire.x / phone.width) < 0.001);
+    assert.ok(Math.abs(reset.y - fire.y / phone.height) < 0.001);
     assert.equal(parseControlScheme(null), 'drag');
     assert.equal(parseControlScheme('drag'), 'drag');
     assert.equal(parseControlScheme('joystick'), 'joystick');

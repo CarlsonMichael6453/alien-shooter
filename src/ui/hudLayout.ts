@@ -96,11 +96,14 @@ export function defaultLayout(field: Field): HudLayout {
   const height = Math.max(1, field.height);
   const bottomPad = Math.max(8, field.bottom);
   const margin = 14;
+  /** Gap between the fire button and the screen edge, and between it and the home indicator. */
+  const corner = 8;
   const stackGap = 8;
   const fire = elementSize('fire', 1, 1);
   const joy = elementSize('joystick', 1, 1);
   const slots = elementSize('inventory', 1, 3);
-  const fireY = height - bottomPad - margin - fire.h;
+  const fireX = width - corner - fire.w;
+  const fireY = height - bottomPad - corner - fire.h;
   const elements: HudElement[] = [
     { id: 'score', x: 16 / width, y: (pause.y + pause.h + 8) / height, scale: 1, opacity: 1, visible: true },
     { id: 'ammo', x: 16 / width, y: (pause.y + pause.h + 62) / height, scale: 1, opacity: 1, visible: true },
@@ -115,7 +118,7 @@ export function defaultLayout(field: Field): HudLayout {
     },
     {
       id: 'inventory',
-      x: (width - margin - slots.w) / width,
+      x: (fireX + fire.w - slots.w) / width,
       y: (fireY - stackGap - slots.h) / height,
       scale: 1,
       opacity: 1,
@@ -139,7 +142,7 @@ export function defaultLayout(field: Field): HudLayout {
     },
     {
       id: 'fire',
-      x: (width - margin - fire.w) / width,
+      x: fireX / width,
       y: fireY / height,
       scale: 1,
       opacity: 1,
