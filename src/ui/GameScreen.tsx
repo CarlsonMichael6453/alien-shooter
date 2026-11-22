@@ -74,6 +74,7 @@ const INITIAL_HUD: HudModel = {
   shieldTimer: 0,
   wingmanTimer: 0,
   warpTimer: 0,
+  missileLeft: 0,
 };
 
 interface DebugSnapshot {
@@ -154,7 +155,7 @@ export function GameScreen() {
   const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
   const [scheme, setScheme] = useState<ControlScheme>('drag');
   const schemeRef = useRef<ControlScheme>('drag');
-  const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, primed: false });
+  const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, missileLeft: 0, primed: false });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
   playfieldRef.current = playfield;
@@ -564,6 +565,7 @@ function publishHud(
     Math.abs(prev.shieldTimer - state.shieldTimer) < 0.05 &&
     Math.abs(prev.wingmanTimer - state.wingmanTimer) < 0.05 &&
     Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
+    prev.missileLeft === state.missileLeft &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
     prev.sectorName === sectorName &&
     prev.bossHp === (state.boss?.hp ?? 0) &&
@@ -591,6 +593,7 @@ function publishHud(
     shieldTimer: state.shieldTimer,
     wingmanTimer: state.wingmanTimer,
     warpTimer: state.warpTimer,
+    missileLeft: state.missileLeft,
     stickX,
     stickY,
     fireHeld,
@@ -599,7 +602,7 @@ function publishHud(
   setHud(next);
 }
 
-function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; primed: boolean }): void {
+function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; missileLeft: number; primed: boolean }): void {
   if (prev.primed) {
     if (state.shotsFired > prev.shots) audio.shoot();
     if (state.score > prev.score) audio.hit();
@@ -613,6 +616,7 @@ function syncAudio(state: GameState, prev: { shots: number; score: number; lives
     if (state.wingmanTimer > 0 && prev.wing === 0) audio.power('wingman');
     if (state.warpTimer > 0 && prev.warp === 0) audio.power('warp');
     if (state.rapidTimer > 0 && prev.rapid === 0) audio.power('rapid');
+    if (state.missileLeft > 0 && prev.missileLeft === 0) audio.power('missiles');
     if (state.laserTimer > 0 && prev.laser === 0) audio.power('laser');
   }
   prev.primed = true;
@@ -628,6 +632,7 @@ function syncAudio(state: GameState, prev: { shots: number; score: number; lives
   prev.rapid = state.rapidTimer;
   prev.laser = state.laserTimer;
   prev.enemyShots = state.enemyBullets.length;
+  prev.missileLeft = state.missileLeft;
   if (state.mode === 'playing') audio.tickMusic(state.sector, state.boss != null);
 }
 

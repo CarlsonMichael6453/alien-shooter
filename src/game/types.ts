@@ -4,9 +4,9 @@ export type EnemyKind = 'alien' | 'asteroid';
 
 export type EnemyShape = 'saucer' | 'dart' | 'rock' | 'cruiser' | 'battleship' | 'carrier';
 
-export type PickupKind = 'ammo' | 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp';
+export type PickupKind = 'ammo' | 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp' | 'missiles';
 
-export type PowerKind = 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp';
+export type PowerKind = 'rapid' | 'bomb' | 'laser' | 'shield' | 'wingman' | 'warp' | 'missiles';
 
 export interface Enemy {
   id: number;
@@ -57,6 +57,17 @@ export interface Bomb {
   vy: number;
   age: number;
   pulse: number;
+}
+
+export interface Missile {
+  x: number;
+  y: number;
+  /** Heading in radians. Straight up the screen is -PI/2. */
+  angle: number;
+  /** Locked enemy id. Null when the lock is the boss or the missile is flying free. */
+  targetId: number | null;
+  boss: boolean;
+  smoke: number;
 }
 
 export interface EnemyBullet {
@@ -144,6 +155,9 @@ export interface GameState {
   wingmanTimer: number;
   wingmanCooldown: number;
   warpTimer: number;
+  /** Missiles still waiting to launch. */
+  missileLeft: number;
+  missileCooldown: number;
   sector: number;
   /** Score at which the next boss arrives. */
   bossScore: number;
@@ -153,6 +167,7 @@ export interface GameState {
   hold: boolean;
   nextId: number;
   bullets: Bullet[];
+  missiles: Missile[];
   enemyBullets: EnemyBullet[];
   enemies: Enemy[];
   pickups: Pickup[];

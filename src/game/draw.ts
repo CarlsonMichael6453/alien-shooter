@@ -53,6 +53,7 @@ export function paintGame(painter: Painter, state: GameState): void {
     painter.fillCircle(bullet.x, bullet.y, bullet.r + 2, 'rgba(255, 120, 60, 0.35)');
     painter.fillCircle(bullet.x, bullet.y, bullet.r * 0.7, '#FFE0B0');
   }
+  for (const missile of state.missiles) drawMissile(painter, missile);
   for (const bullet of state.bullets) drawBullet(painter, bullet);
 
   if (state.wingmanTimer > 0) drawWingmen(painter, state);
@@ -246,6 +247,7 @@ function drawPickup(painter: Painter, pickup: Pickup, time: number): void {
   else if (pickup.kind === 'shield') drawShieldIcon(painter);
   else if (pickup.kind === 'wingman') drawWingmanIcon(painter);
   else if (pickup.kind === 'warp') drawWarpIcon(painter);
+  else if (pickup.kind === 'missiles') drawMissileIcon(painter);
   else drawLaserIcon(painter);
   painter.restore();
 }
@@ -559,6 +561,40 @@ function drawWingmanIcon(painter: Painter): void {
       [-2, 4],
     ],
     '#B7D4EA',
+  );
+}
+
+function drawMissile(painter: Painter, missile: { x: number; y: number; angle: number }): void {
+  const { x, y, angle } = missile;
+  for (let i = 5; i >= 1; i -= 1) {
+    painter.fillCircle(x - Math.cos(angle) * i * 6, y - Math.sin(angle) * i * 6, 3.4 - i * 0.4, rgba('#D5DEE8', 0.1 + (6 - i) * 0.08));
+  }
+  painter.save();
+  painter.translate(x, y);
+  painter.rotate(angle + Math.PI / 2);
+  painter.fillPolygon(
+    [
+      [0, -10],
+      [4.2, 7],
+      [-4.2, 7],
+    ],
+    '#F0C14A',
+  );
+  painter.fillCircle(0, -6, 2.1, '#FFF4C8');
+  painter.restore();
+}
+
+function drawMissileIcon(painter: Painter): void {
+  painter.fillCircle(0, 0, 20, '#1A2430');
+  painter.fillCircle(0, 8, 3.2, 'rgba(210,220,230,0.7)');
+  painter.fillCircle(0, 3, 2.2, 'rgba(210,220,230,0.45)');
+  painter.fillPolygon(
+    [
+      [0, -12],
+      [5, 6],
+      [-5, 6],
+    ],
+    '#F0C14A',
   );
 }
 

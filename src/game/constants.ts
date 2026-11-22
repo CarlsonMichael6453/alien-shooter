@@ -44,6 +44,12 @@ export const WINGMAN_INTERVAL = 0.22;
 export const WARP_DURATION = 5;
 export const WARP_SCALE = 0.5;
 
+export const MISSILE_COUNT = 20;
+export const MISSILE_INTERVAL = 0.5;
+export const MISSILE_DAMAGE = 8;
+export const MISSILE_SPEED = 460;
+export const MISSILE_TURN = 2.4;
+
 export const SECTOR_BANNER = 1.8;
 export const BATTLESHIP_HP = 40;
 export const CARRIER_HP = 30;

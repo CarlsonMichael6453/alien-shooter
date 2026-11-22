@@ -137,6 +137,7 @@ class ArcadeAudio {
     if (kind === 'shield') this.tone(480, 0.18, 'sine', 0.4, 1.6);
     else if (kind === 'warp') this.tone(300, 0.3, 'sawtooth', 0.3, 0.5);
     else if (kind === 'wingman') this.tone(660, 0.1, 'square', 0.3, 1.5);
+    else if (kind === 'missiles') this.tone(440, 0.16, 'sawtooth', 0.32, 1.7);
     else this.tone(880, 0.1, 'square', 0.28, 1.2);
   }
 

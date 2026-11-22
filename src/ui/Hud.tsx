@@ -33,6 +33,7 @@ export interface HudModel {
   shieldTimer: number;
   wingmanTimer: number;
   warpTimer: number;
+  missileLeft: number;
   stickX: number;
   stickY: number;
   fireHeld: boolean;
@@ -426,6 +427,7 @@ function ElementBody({
         {model.shieldTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SHIELD {model.shieldTimer.toFixed(1)}</Text> : null}
         {model.wingmanTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>WING {model.wingmanTimer.toFixed(1)}</Text> : null}
         {model.warpTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>WARP {model.warpTimer.toFixed(1)}</Text> : null}
+        {model.missileLeft > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SWARM {model.missileLeft}</Text> : null}
       </View>
     );
   }
@@ -813,6 +815,14 @@ function PowerGlyph({ kind }: { kind: PowerKind }) {
       </View>
     );
   }
+  if (kind === 'missiles') {
+    return (
+      <View style={styles.glyph}>
+        <View style={styles.missileTrail} />
+        <View style={styles.missileBody} />
+      </View>
+    );
+  }
   if (kind === 'wingman') {
     return (
       <View style={styles.glyph}>
@@ -1080,6 +1090,22 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 2,
     backgroundColor: '#E7F3FF',
+  },
+  missileBody: {
+    position: 'absolute',
+    top: 3,
+    width: 6,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: '#F0C14A',
+  },
+  missileTrail: {
+    position: 'absolute',
+    top: 16,
+    width: 3,
+    height: 7,
+    borderRadius: 2,
+    backgroundColor: '#D5DEE8',
   },
   warpRing: {
     width: 16,
