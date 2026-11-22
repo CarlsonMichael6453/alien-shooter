@@ -1,5 +1,23 @@
 import { DRAG_FOLLOW } from './constants';
 
+/** Fraction of the stick radius that does not move the ship. */
+export const STICK_DEAD_ZONE = 0.09;
+
+/**
+ * Analog stick output in [-1, 1]. `t` is the travel from the dead zone to the
+ * rim, clamped at the edge. Speed fraction is `t` to the power 1.5.
+ */
+export function stickResponse(dx: number, dy: number, radius: number): { x: number; y: number } {
+  if (radius <= 0) return { x: 0, y: 0 };
+  const mag = Math.hypot(dx, dy);
+  if (mag === 0) return { x: 0, y: 0 };
+  const raw = Math.min(1, mag / radius);
+  if (raw <= STICK_DEAD_ZONE) return { x: 0, y: 0 };
+  const t = (raw - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE);
+  const speed = t ** 1.5;
+  return { x: (dx / mag) * speed, y: (dy / mag) * speed };
+}
+
 export interface ControlFrame {
   moveActive: boolean;
   targetX: number;
@@ -322,10 +340,7 @@ export class Controls {
     if (radius <= 0) return { x: 0, y: 0 };
     const dx = track.x - (rect.x + rect.w / 2);
     const dy = track.y - (rect.y + rect.h / 2);
-    const mag = Math.hypot(dx, dy);
-    if (mag < radius * 0.12) return { x: 0, y: 0 };
-    const scale = Math.min(1, mag / radius);
-    return { x: (dx / mag) * scale, y: (dy / mag) * scale };
+    return stickResponse(dx, dy, radius);
   }
 
   private hitsInventory(x: number, y: number): number {

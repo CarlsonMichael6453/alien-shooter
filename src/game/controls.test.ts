@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DRAG_FOLLOW } from './constants';
-import { Controls } from './controls';
+import { Controls, STICK_DEAD_ZONE, stickResponse } from './controls';
 
 describe('two-finger controls', () => {
   it('treats the first touch as move and the second as fire', () => {
@@ -211,5 +211,24 @@ describe('joystick controls', () => {
     assert.equal(frame.moveActive, true);
     assert.equal(frame.targetX, 40 + 20 * DRAG_FOLLOW);
     assert.equal(frame.targetY, 50 + 10 * DRAG_FOLLOW);
+  });
+
+  it('crawls just outside the dead zone and reaches full speed only at the rim', () => {
+    const radius = 100;
+    assert.deepEqual(stickResponse(STICK_DEAD_ZONE * radius, 0, radius), { x: 0, y: 0 });
+    const gentle = stickResponse(0.2 * radius, 0, radius);
+    const halfway = stickResponse(0.5 * radius, 0, radius);
+    const rim = stickResponse(radius, 0, radius);
+    const past = stickResponse(radius * 3, 0, radius);
+    const t = (raw: number) => (raw - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE);
+    assert.ok(Math.abs(gentle.x - t(0.2) ** 1.5) < 1e-9);
+    assert.ok(gentle.x < 0.2);
+    assert.ok(Math.abs(halfway.x - t(0.5) ** 1.5) < 1e-9);
+    assert.ok(halfway.x < 0.5);
+    assert.ok(Math.abs(rim.x - 1) < 1e-9);
+    assert.ok(Math.abs(past.x - 1) < 1e-9);
+    const diagonal = stickResponse(radius, radius, radius);
+    assert.ok(Math.abs(Math.hypot(diagonal.x, diagonal.y) - 1) < 1e-9);
+    assert.ok(Math.abs(diagonal.x - diagonal.y) < 1e-9);
   });
 });
