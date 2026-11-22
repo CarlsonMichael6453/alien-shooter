@@ -1,6 +1,6 @@
 # Store prep
 
-The native listing is not final. Placeholders are in `app.config.ts` and `eas.json`.
+The native listing is not final. Placeholders are in `app.config.ts` and `eas.json`. The public site is published from `main`.
 
 ## Still needed before a store submit
 
