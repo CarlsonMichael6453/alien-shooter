@@ -24,6 +24,7 @@ import {
   clampLayout,
   defaultLayout,
   elementBounds,
+  resetButtonLayout,
   gearRect,
   inventoryRects,
   loadLayout,
@@ -151,8 +152,8 @@ export function GameScreen() {
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
   const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
-  const [scheme, setScheme] = useState<ControlScheme>('joystick');
-  const schemeRef = useRef<ControlScheme>('joystick');
+  const [scheme, setScheme] = useState<ControlScheme>('drag');
+  const schemeRef = useRef<ControlScheme>('drag');
   const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, primed: false });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
@@ -292,12 +293,12 @@ export function GameScreen() {
           uiRef.current === 'none' ? [{ ...gear, x: gear.x + offsetRef.current }] : [],
         );
         controlsRef.current.setScheme(schemeRef.current);
-        const showPads = schemeRef.current === 'joystick' && uiRef.current === 'none';
+        const playingUi = uiRef.current === 'none';
         const stick = hudLayoutRef.current?.elements.find((element) => element.id === 'joystick');
         const fire = hudLayoutRef.current?.elements.find((element) => element.id === 'fire');
         controlsRef.current.setActionRects(
-          showPads && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
-          showPads && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
+          playingUi && schemeRef.current === 'joystick' && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
+          playingUi && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
         );
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
@@ -419,7 +420,7 @@ export function GameScreen() {
     <View
       nativeID="alien-shooter-root"
       collapsable={false}
-      accessibilityLabel="Alien Shooter. Drag the stick to move. Hold the fire button to shoot."
+      accessibilityLabel="Alien Shooter. Drag to move. Hold the fire button to shoot."
       style={[styles.root, webTouch as object]}
       {...nativeTouchProps(controlsRef, stateRef, uiRef, () => onPressRef.current())}
     >
@@ -475,6 +476,11 @@ export function GameScreen() {
               void saveControlScheme(storeRef.current, next);
             }}
             onEditHud={() => openUiRef.current('editor')}
+            onEditButtons={() => openUiRef.current('buttons')}
+            onResetButtons={() => {
+              if (!hudLayoutRef.current) return;
+              commitLayout(resetButtonLayout(hudLayoutRef.current, field), true);
+            }}
             onDoneEditing={() => openUiRef.current('settings')}
             onSelect={setSelected}
             onPlace={(id, x, y) => {
@@ -537,15 +543,11 @@ function publishHud(
         : state.laserTimer > 0
           ? finePointer
             ? 'Point the mouse to aim the laser'
-            : scheme === 'joystick'
-              ? 'Drag the fire button to aim'
-              : 'Move the firing finger to aim'
+            : 'Drag the fire button to aim'
           : state.shotsFired === 0 && state.time < 8
             ? finePointer
-              ? 'Hold Space to fire'
-              : scheme === 'joystick'
-                ? 'Hold the fire button'
-                : 'Hold a second finger to fire'
+              ? 'Hold Space or the fire button'
+              : 'Hold the fire button'
             : null;
   const prev = hudRef.current;
   if (
