@@ -38,6 +38,19 @@ function clamp01(value: number): number {
 
 type Tone = 'square' | 'sawtooth' | 'triangle' | 'sine';
 
+/** Charge into the beam, then the looping body, then the fall-away. Seconds, not gameplay time. */
+export const LASER_CHARGE = 0.26;
+export const LASER_TAIL = 0.42;
+
+export type LaserIntent = 'play' | 'suspend' | 'off';
+
+/** Beam heard only while it is firing and the run is not paused. Death and quit are off. */
+export function laserIntent(beamOn: boolean, paused: boolean): LaserIntent {
+  if (!beamOn) return 'off';
+  if (paused) return 'suspend';
+  return 'play';
+}
+
 class ArcadeAudio {
   settings: AudioSettings = { ...DEFAULT_AUDIO };
   private ctx: AudioContext | null = null;
@@ -48,6 +61,7 @@ class ArcadeAudio {
   private sector = -1;
   private boss = false;
   private unlocked = false;
+  private laser: LaserBed | null = null;
 
   installUnlock(): void {
     if (typeof window === 'undefined') return;
@@ -136,6 +150,20 @@ class ArcadeAudio {
     this.tone(780, 0.12, 'square', 0.25, 1);
   }
 
+  syncLaser(beamOn: boolean, paused: boolean): void {
+    const intent = laserIntent(beamOn, paused);
+    if (intent === 'off') {
+      this.laser?.end();
+      return;
+    }
+    if (!this.unlocked || typeof window === 'undefined') return;
+    const ctx = this.ensure();
+    if (!ctx || !this.sfxGain) return;
+    if (!this.laser || this.laser.dead) this.laser = new LaserBed(ctx, this.sfxGain);
+    if (intent === 'suspend') this.laser.suspend();
+    else this.laser.play();
+  }
+
   power(kind: string): void {
     if (kind === 'shield') this.tone(480, 0.18, 'sine', 0.4, 1.6);
     else if (kind === 'warp') this.tone(300, 0.3, 'sawtooth', 0.3, 0.5);
@@ -180,6 +208,191 @@ class ArcadeAudio {
       this.step += 1;
     }
   }
+}
+
+class LaserBed {
+  dead = false;
+  private phase: 'idle' | 'play' | 'suspended' = 'idle';
+  private bed: GainNode | null = null;
+  private sources: AudioScheduledSourceNode[] = [];
+  private hums: OscillatorNode[] = [];
+
+  constructor(
+    private ctx: AudioContext,
+    private dest: GainNode,
+  ) {}
+
+  play(): void {
+    if (this.dead || this.phase === 'play') return;
+    if (this.phase === 'suspended' && this.bed) {
+      this.phase = 'play';
+      const now = this.ctx.currentTime;
+      this.bed.gain.cancelScheduledValues(now);
+      this.bed.gain.setValueAtTime(Math.max(0.0001, this.bed.gain.value), now);
+      this.bed.gain.exponentialRampToValueAtTime(1, now + 0.08);
+      return;
+    }
+    this.silence(0.03);
+    this.start();
+    this.phase = 'play';
+  }
+
+  suspend(): void {
+    if (this.dead || this.phase !== 'play' || !this.bed) return;
+    this.phase = 'suspended';
+    const now = this.ctx.currentTime;
+    this.bed.gain.cancelScheduledValues(now);
+    this.bed.gain.setValueAtTime(Math.max(0.0001, this.bed.gain.value), now);
+    this.bed.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+  }
+
+  end(): void {
+    if (this.dead || this.phase === 'idle') return;
+    const tail = this.phase === 'suspended' ? 0.06 : LASER_TAIL;
+    this.phase = 'idle';
+    this.powerDown(tail);
+    this.dead = true;
+  }
+
+  private start(): void {
+    const now = this.ctx.currentTime;
+    const bed = this.ctx.createGain();
+    bed.gain.setValueAtTime(1, now);
+    bed.connect(this.dest);
+    this.bed = bed;
+
+    const charge = this.ctx.createGain();
+    charge.gain.setValueAtTime(0.0001, now);
+    charge.gain.exponentialRampToValueAtTime(0.32, now + LASER_CHARGE * 0.72);
+    charge.gain.exponentialRampToValueAtTime(0.0001, now + LASER_CHARGE + 0.08);
+    charge.connect(bed);
+    this.voice(180, 760, 'sine', 0.7, charge, now, LASER_CHARGE);
+    this.voice(90, 380, 'sawtooth', 0.28, charge, now, LASER_CHARGE);
+
+    const sustain = this.ctx.createGain();
+    sustain.gain.setValueAtTime(0.0001, now);
+    sustain.gain.exponentialRampToValueAtTime(1, now + LASER_CHARGE + 0.05);
+    sustain.connect(bed);
+
+    this.hum(92, 0.16, sustain, now);
+    this.hum(184.6, 0.07, sustain, now);
+
+    const buzzFilter = this.ctx.createBiquadFilter();
+    buzzFilter.type = 'lowpass';
+    buzzFilter.frequency.setValueAtTime(480, now);
+    buzzFilter.Q.setValueAtTime(3.2, now);
+    const buzzAmp = this.ctx.createGain();
+    buzzAmp.gain.setValueAtTime(0.11, now);
+    buzzFilter.connect(buzzAmp);
+    buzzAmp.connect(sustain);
+    const buzz = this.osc(61, 'sawtooth', now);
+    buzz.connect(buzzFilter);
+    this.wobble(buzz.frequency, 7, 14, now);
+
+    const noiseAmp = this.ctx.createGain();
+    noiseAmp.gain.setValueAtTime(0.05, now);
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(1700, now);
+    band.Q.setValueAtTime(0.7, now);
+    band.connect(noiseAmp);
+    noiseAmp.connect(sustain);
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = crackleBuffer(this.ctx);
+    noise.loop = true;
+    noise.connect(band);
+    noise.start(now);
+    this.sources.push(noise);
+    this.wobble(noiseAmp.gain, 0.035, 31, now);
+  }
+
+  private voice(from: number, to: number, type: Tone, gain: number, dest: GainNode, now: number, dur: number): void {
+    const amp = this.ctx.createGain();
+    amp.gain.setValueAtTime(gain, now);
+    amp.connect(dest);
+    const osc = this.osc(from, type, now);
+    osc.frequency.exponentialRampToValueAtTime(to, now + dur);
+    osc.connect(amp);
+    this.hums.push(osc);
+  }
+
+  private hum(freq: number, gain: number, dest: GainNode, now: number): void {
+    const amp = this.ctx.createGain();
+    amp.gain.setValueAtTime(gain, now);
+    amp.connect(dest);
+    const osc = this.osc(freq, 'sine', now);
+    osc.connect(amp);
+    this.hums.push(osc);
+  }
+
+  private osc(freq: number, type: Tone, now: number): OscillatorNode {
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    osc.start(now);
+    this.sources.push(osc);
+    return osc;
+  }
+
+  private wobble(param: AudioParam, depth: number, rate: number, now: number): void {
+    const lfo = this.ctx.createOscillator();
+    const amount = this.ctx.createGain();
+    lfo.frequency.setValueAtTime(rate, now);
+    amount.gain.setValueAtTime(depth, now);
+    lfo.connect(amount);
+    amount.connect(param);
+    lfo.start(now);
+    this.sources.push(lfo);
+  }
+
+  private powerDown(seconds: number): void {
+    const now = this.ctx.currentTime;
+    const end = now + Math.max(0.03, seconds);
+    if (this.bed) {
+      this.bed.gain.cancelScheduledValues(now);
+      this.bed.gain.setValueAtTime(Math.max(0.0001, this.bed.gain.value), now);
+      this.bed.gain.exponentialRampToValueAtTime(0.0001, end);
+    }
+    for (const hum of this.hums) {
+      try {
+        hum.frequency.cancelScheduledValues(now);
+        hum.frequency.setValueAtTime(Math.max(40, hum.frequency.value), now);
+        hum.frequency.exponentialRampToValueAtTime(46, end);
+      } catch {
+        // A finished oscillator no longer accepts automation.
+      }
+    }
+    this.silence(seconds);
+    this.bed = null;
+    this.hums = [];
+  }
+
+  private silence(seconds: number): void {
+    const when = this.ctx.currentTime + Math.max(0.02, seconds);
+    for (const source of this.sources) {
+      try {
+        source.stop(when);
+      } catch {
+        // Already stopped.
+      }
+    }
+    this.sources = [];
+  }
+}
+
+function crackleBuffer(ctx: AudioContext): AudioBuffer {
+  const length = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  let brown = 0;
+  for (let i = 0; i < length; i += 1) {
+    const white = Math.random() * 2 - 1;
+    brown = brown * 0.86 + white * 0.14;
+    let sample = brown;
+    if (Math.random() < 0.003) sample += white * 1.6;
+    data[i] = Math.max(-1, Math.min(1, sample));
+  }
+  return buffer;
 }
 
 export const audio = new ArcadeAudio();
