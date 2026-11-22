@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: 'Alien Shooter',
+  name: 'PLACEHOLDER',
   slug: 'alien-shooter',
   version: '1.0.0',
   orientation: 'portrait',
@@ -12,11 +12,11 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     requireFullScreen: true,
-    bundleIdentifier: 'com.carlsonmichael.alienshooter',
+    bundleIdentifier: 'com.placeholder.alienshooter',
     backgroundColor: '#070B14',
   },
   android: {
-    package: 'com.carlsonmichael.alienshooter',
+    package: 'com.placeholder.alienshooter',
     adaptiveIcon: {
       backgroundColor: '#07111F',
       foregroundImage: './assets/android-icon-foreground.png',
@@ -30,7 +30,7 @@ const config: ExpoConfig = {
     output: 'single',
     favicon: './assets/favicon.png',
     backgroundColor: '#070B14',
-    name: 'Alien Shooter',
+    name: 'PLACEHOLDER',
     themeColor: '#070B14',
   },
   plugins: [

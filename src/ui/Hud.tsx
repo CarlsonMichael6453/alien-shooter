@@ -5,6 +5,7 @@ import {
   elementBounds,
   elementLabel,
   gearRect,
+  pauseRect,
   type Field,
   type HudElement,
   type HudElementId,
@@ -15,6 +16,8 @@ import type { AudioSettings } from '../audio/arcade';
 import type { ControlScheme } from './controlsMode';
 import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
+import { MainMenu, PauseMenu, PrivacyPage, ScoreBoard, ShipSelect } from './Menus';
+import type { Profile } from './profile';
 
 export interface HudModel {
   mode: Mode;
@@ -38,9 +41,10 @@ export interface HudModel {
   stickX: number;
   stickY: number;
   fireHeld: boolean;
+  wave: number;
 }
 
-export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback';
+export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback' | 'pause' | 'scores' | 'ships' | 'privacy';
 
 interface Props {
   model: HudModel;
@@ -71,6 +75,16 @@ interface Props {
   onAudio: (patch: Partial<AudioSettings>) => void;
   scheme: ControlScheme;
   onScheme: (scheme: ControlScheme) => void;
+  profile: Profile;
+  onPlay: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onQuit: () => void;
+  onOpenScores: () => void;
+  onOpenShips: () => void;
+  onOpenPrivacy: () => void;
+  onSelectShip: (id: string) => void;
+  closeLabel: string;
 }
 
 const GHOSTS: PowerKind[] = ['rapid', 'bomb', 'laser'];
@@ -109,6 +123,16 @@ export function Overlay({
   onAudio,
   scheme,
   onScheme,
+  profile,
+  onPlay,
+  onPause,
+  onResume,
+  onQuit,
+  onOpenScores,
+  onOpenShips,
+  onOpenPrivacy,
+  onSelectShip,
+  closeLabel,
 }: Props) {
   const playing = model.mode === 'playing';
   const editingHud = ui === 'editor';
@@ -169,17 +193,24 @@ export function Overlay({
       ) : null}
       {model.mode === 'playing' && model.sectorBanner > 0.15 ? (
         <View pointerEvents="none" style={styles.bannerWrap}>
-          <Text style={styles.kicker}>SECTOR</Text>
+          <Text style={styles.kicker}>WAVE {model.wave}</Text>
           <Text style={styles.bannerTitle}>{model.sectorName.toUpperCase()}</Text>
         </View>
       ) : null}
-      {model.mode === 'ready' && ui === 'none' ? <StartCard finePointer={finePointer} scheme={scheme} /> : null}
+      {model.mode === 'ready' && ui === 'none' ? (
+        <MainMenu onPlay={onPlay} onShips={onOpenShips} onScores={onOpenScores} onSettings={onOpenSettings} onPrivacy={onOpenPrivacy} />
+      ) : null}
       {model.mode === 'over' && ui === 'none' ? <GameOver model={model} /> : null}
       {ratingOffer && model.mode === 'over' && ui === 'none' ? (
         <RatingPrompt score={model.score} onRate={onRate} onLater={onLater} onNever={onNever} />
       ) : null}
 
-      {ui === 'none' ? <GearButton rect={gear} onPress={onOpenSettings} /> : null}
+      {playing && ui === 'none' ? <PauseButton rect={pauseRect(field)} onPress={onPause} /> : null}
+      {ui === 'none' && model.mode !== 'ready' ? <GearButton rect={gear} onPress={onOpenSettings} /> : null}
+      {ui === 'pause' ? <PauseMenu onResume={onResume} onSettings={onOpenSettings} onQuit={onQuit} /> : null}
+      {ui === 'scores' ? <ScoreBoard profile={profile} onClose={onCloseUi} /> : null}
+      {ui === 'ships' ? <ShipSelect profile={profile} onSelect={onSelectShip} onClose={onCloseUi} /> : null}
+      {ui === 'privacy' ? <PrivacyPage onClose={onCloseUi} /> : null}
       {ui === 'settings' ? (
         <SettingsMenu
           paused={playing}
@@ -192,6 +223,7 @@ export function Overlay({
           onAudio={onAudio}
           scheme={scheme}
           onScheme={onScheme}
+          closeLabel={closeLabel}
         />
       ) : null}
       {ui === 'feedback' ? <FeedbackForm onClose={onCloseUi} /> : null}
@@ -489,7 +521,7 @@ function TutorialPrompt({
     const arrowTop = pointDown ? Math.max(field.top + 8, bounds.y - 28) : bounds.y + bounds.h + 6;
     return (
       <View pointerEvents="none" style={styles.overlay}>
-        <Text style={[styles.powerText, { top: Math.max(field.top + 28, field.height * 0.3) }]}>Press to use</Text>
+        <Text style={[styles.powerText, { top: Math.max(field.top + 28, field.height * 0.3) }]}>Tap the icon to use it</Text>
         <Animated.View
           style={[
             styles.arrow,
@@ -505,8 +537,18 @@ function TutorialPrompt({
       </View>
     );
   }
-  const title = scheme === 'joystick' ? (cue === 'move' ? 'Drag the stick to move' : 'Hold the fire button') : cue === 'move' ? 'Drag to move' : 'Hold the fire button';
-  const detail = scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
+  const title =
+    cue === 'pickup'
+      ? 'Pick up a power-up'
+      : scheme === 'joystick'
+        ? cue === 'move'
+          ? 'Drag the stick to move'
+          : 'Hold the fire button'
+        : cue === 'move'
+          ? 'Drag to move'
+          : 'Hold the fire button';
+  const detail =
+    cue === 'pickup' ? 'Fly into the glowing badge' : scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
   return (
     <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
       <Text style={styles.promptTitle}>{title}</Text>
@@ -528,6 +570,19 @@ function Finger() {
 
 function Chevron() {
   return <View style={styles.chevron} />;
+}
+
+function PauseButton({ rect, onPress }: { rect: { x: number; y: number; w: number; h: number }; onPress: () => void }) {
+  return (
+    <View ref={markUi} collapsable={false} style={[styles.gearButton, { left: rect.x, top: rect.y, width: rect.w, height: rect.h }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Pause" onPress={onPress} style={styles.gearPress}>
+        <View style={styles.pauseMark}>
+          <View style={styles.pauseBar} />
+          <View style={styles.pauseBar} />
+        </View>
+      </Pressable>
+    </View>
+  );
 }
 
 function GearButton({ rect, onPress }: { rect: { x: number; y: number; w: number; h: number }; onPress: () => void }) {
@@ -586,7 +641,7 @@ function GameOver({ model }: { model: HudModel }) {
         <Text style={styles.kicker}>END OF RUN</Text>
         <Text style={styles.title}>GAME{'\n'}OVER</Text>
         <Text style={styles.finalScore}>{formatScore(model.score)}</Text>
-        <Text style={styles.best}>BEST {formatScore(model.best)}</Text>
+        <Text style={styles.best}>BEST {formatScore(model.best)} · WAVE {model.wave}</Text>
         <Text style={styles.cta}>TAP TO RESTART</Text>
       </View>
     </View>
@@ -615,6 +670,7 @@ function SettingsMenu({
   onAudio,
   scheme,
   onScheme,
+  closeLabel,
 }: {
   paused: boolean;
   onClose: () => void;
@@ -626,6 +682,7 @@ function SettingsMenu({
   onAudio: (patch: Partial<AudioSettings>) => void;
   scheme: ControlScheme;
   onScheme: (scheme: ControlScheme) => void;
+  closeLabel: string;
 }) {
   return (
     <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.cardWrap, styles.menuScrim]}>
@@ -660,10 +717,23 @@ function SettingsMenu({
         <Pressable accessibilityRole="button" onPress={onFeedback} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Feedback</Text>
         </Pressable>
+        <Text style={styles.menuBody}>Sound and haptics stay on this device.</Text>
         <VolumeRow label="Music" value={audio.music} on={audio.musicOn} onToggle={() => onAudio({ musicOn: !audio.musicOn })} onChange={(music) => onAudio({ music })} />
         <VolumeRow label="SFX" value={audio.sfx} on={audio.sfxOn} onToggle={() => onAudio({ sfxOn: !audio.sfxOn })} onChange={(sfx) => onAudio({ sfx })} />
+        <View style={styles.toggleRow}>
+          <Text style={styles.schemeLabel}>Vibration</Text>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: audio.vibrate }}
+            accessibilityLabel="Vibration"
+            onPress={() => onAudio({ vibrate: !audio.vibrate })}
+            style={[styles.toggle, audio.vibrate ? styles.toggleOn : null]}
+          >
+            <View style={[styles.toggleKnob, audio.vibrate ? styles.toggleKnobOn : null]} />
+          </Pressable>
+        </View>
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.menuPrimary}>
-          <Text style={styles.menuPrimaryText}>{paused ? 'Resume' : 'Close'}</Text>
+          <Text style={styles.menuPrimaryText}>{closeLabel}</Text>
         </Pressable>
       </View>
     </View>
@@ -1038,6 +1108,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pauseMark: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  pauseBar: {
+    width: 4,
+    height: 14,
+    borderRadius: 1,
+    backgroundColor: '#7EF0FF',
   },
   gear: {
     width: 22,

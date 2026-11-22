@@ -10,7 +10,7 @@ export interface TutorialProgress {
   power: boolean;
 }
 
-export type TutorialCue = 'move' | 'shoot' | 'power' | null;
+export type TutorialCue = 'move' | 'shoot' | 'pickup' | 'power' | null;
 
 export const FRESH_TUTORIAL: TutorialProgress = { moved: false, fired: false, power: false };
 
@@ -55,7 +55,8 @@ export function tutorialCue(progress: TutorialProgress, input: TutorialInput): {
   if (showingPower && input.powerHintElapsed >= POWER_HINT_SECONDS) next = { ...next, power: true };
   if (!next.moved) return { cue: 'move', progress: next };
   if (!next.fired) return { cue: 'shoot', progress: next };
-  if (!next.power && input.inventoryCount > 0) return { cue: 'power', progress: next };
+  if (!next.power && input.inventoryCount <= 0) return { cue: 'pickup', progress: next };
+  if (!next.power) return { cue: 'power', progress: next };
   return { cue: null, progress: next };
 }
 

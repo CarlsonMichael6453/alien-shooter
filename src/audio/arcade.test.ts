@@ -7,6 +7,7 @@ describe('audio settings', () => {
     const settings = parseAudioSettings(null);
     assert.equal(settings.musicOn, true);
     assert.equal(settings.sfxOn, true);
+    assert.equal(settings.vibrate, true);
     assert.ok(settings.music > 0 && settings.music <= 1);
     assert.ok(settings.sfx > 0 && settings.sfx <= 1);
   });

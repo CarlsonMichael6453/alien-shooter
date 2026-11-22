@@ -1,4 +1,5 @@
 import { SHIELD_HOT, SHIELD_NEON, hexPoints } from './abilityArt';
+import { shipStyle } from './ships';
 import { beamNose } from './logic';
 import { sectorTheme } from './sectors';
 import type { Boss, Enemy, GameState, Pickup } from './types';
@@ -107,6 +108,7 @@ function drawPlanet(
 
 function drawShip(painter: Painter, state: GameState): void {
   const blink = state.invuln > 0 && Math.sin(state.invuln * 28) < 0;
+  const paint = shipStyle(state.shipId);
   painter.save();
   painter.translate(state.shipX, state.shipY);
   if (blink) {
@@ -121,7 +123,7 @@ function drawShip(painter: Painter, state: GameState): void {
       [-8, 16],
       [-18, 18],
     ],
-    '#1B6CFF',
+    paint.wing,
   );
   painter.fillPolygon(
     [
@@ -130,7 +132,7 @@ function drawShip(painter: Painter, state: GameState): void {
       [8, 16],
       [18, 18],
     ],
-    '#1B6CFF',
+    paint.wing,
   );
   painter.fillPolygon(
     [
@@ -139,7 +141,7 @@ function drawShip(painter: Painter, state: GameState): void {
       [0, 10],
       [-13, 16],
     ],
-    blink ? 'rgba(217,251,255,0.35)' : '#D9FBFF',
+    blink ? 'rgba(217,251,255,0.35)' : paint.hull,
   );
   painter.fillPolygon(
     [
@@ -148,7 +150,7 @@ function drawShip(painter: Painter, state: GameState): void {
       [0, 7],
       [-6, 12],
     ],
-    blink ? 'rgba(126,240,255,0.35)' : '#7EF0FF',
+    blink ? 'rgba(126,240,255,0.35)' : paint.core,
   );
   painter.fillPolygon(
     [
@@ -168,8 +170,8 @@ function drawShip(painter: Painter, state: GameState): void {
     ],
     '#0E3E66',
   );
-  painter.fillCircle(-20, 10, 2.2, '#7EF0FF');
-  painter.fillCircle(20, 10, 2.2, '#7EF0FF');
+  painter.fillCircle(-20, 10, 2.2, paint.accent);
+  painter.fillCircle(20, 10, 2.2, paint.accent);
   painter.fillCircle(0, -2, 4.2, '#072033');
   painter.fillCircle(-1.2, -3.4, 1.5, 'rgba(184,246,255,0.95)');
 

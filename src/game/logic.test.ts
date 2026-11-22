@@ -345,10 +345,11 @@ describe('simulation', () => {
     assert.ok(moved > 4 && moved < 6, `warp moved the bullet ${moved}`);
   });
 
-  it('starts a boss at 1000 points and opens the next sector when it falls', () => {
+  it('starts a boss on every third wave and opens the next sector when it falls', () => {
     const state = playing();
-    state.score = 1000;
-    state.spawnCooldown = 0;
+    state.wave = 3;
+    state.waveSpawned = 0;
+    state.enemies = [];
     step(state, idleIntent(), 0.05);
     assert.ok(state.boss);
     assert.equal(state.boss?.maxHp, 50);

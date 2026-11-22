@@ -12,14 +12,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controls } from '../game/controls';
-import { createGame, resizeGame, step } from '../game/logic';
+import { createGame, quitToMenu, resizeGame, step } from '../game/logic';
 import { sectorTheme } from '../game/sectors';
 import type { GameState } from '../game/types';
 import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
 import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
+import { pulseHaptic } from './haptics';
 import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
+import { FRESH_PROFILE, loadProfile, recordRun, saveProfile, selectShip, type Profile } from './profile';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
@@ -76,6 +78,7 @@ const INITIAL_HUD: HudModel = {
   wingmanTimer: 0,
   warpTimer: 0,
   missileLeft: 0,
+  wave: 1,
 };
 
 interface DebugSnapshot {
@@ -111,6 +114,9 @@ declare global {
       closeUi: () => void;
       setTutorial: (progress: TutorialProgress) => void;
       offerRating: () => void;
+      openPause: () => void;
+      openScores: () => void;
+      openShips: () => void;
     };
   }
 }
@@ -148,13 +154,18 @@ export function GameScreen() {
   const uiRef = useRef<UiMode>('none');
   const openUiRef = useRef<(next: UiMode) => void>(() => {});
   const [ui, setUi] = useState<UiMode>('none');
+  const [profile, setProfile] = useState<Profile>(FRESH_PROFILE);
+  const profileRef = useRef<Profile>(FRESH_PROFILE);
+  const returnRef = useRef<UiMode>('none');
   const [selected, setSelected] = useState<HudElementId>('score');
   const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null, deaths: 0 });
   const ratingLoadedRef = useRef(false);
   const [ratingOffer, setRatingOffer] = useState(false);
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
-  const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
+  const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true, vibrate: true });
+  const audioRef = useRef(audioUi);
+  audioRef.current = audioUi;
   const [scheme, setScheme] = useState<ControlScheme>('drag');
   const schemeRef = useRef<ControlScheme>('drag');
   const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, missileLeft: 0, primed: false });
@@ -231,17 +242,24 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating, audioSettings, savedScheme] = await Promise.all([
+      const [progress, saved, rating, audioSettings, savedScheme, savedProfile] = await Promise.all([
         loadTutorial(store),
         loadLayout(store),
         loadRatingMemory(store),
         loadAudio(store),
         loadControlScheme(store),
+        loadProfile(store),
       ]);
       if (cancel) return;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
+      profileRef.current = savedProfile;
+      setProfile(savedProfile);
+      if (stateRef.current) {
+        stateRef.current.shipId = savedProfile.shipId;
+        stateRef.current.best = Math.max(stateRef.current.best, savedProfile.bestScore);
+      }
       setAudioUi(audioSettings);
       schemeRef.current = savedScheme;
       setScheme(savedScheme);
@@ -263,6 +281,8 @@ export function GameScreen() {
       const { width, height } = playfieldRef.current;
       if (!stateRef.current && width > 0 && height > 0) {
         stateRef.current = createGame(width, height);
+        stateRef.current.shipId = profileRef.current.shipId;
+        stateRef.current.best = Math.max(stateRef.current.best, profileRef.current.bestScore);
       }
       const state = stateRef.current;
       const field = fieldRef.current;
@@ -328,8 +348,14 @@ export function GameScreen() {
           controlsRef.current.consumePower();
         }
         if (controlsRef.current.consumeChrome()) openUiRef.current('settings');
+        if (ratingLoadedRef.current && !frozen && state.lives < audioPrev.current.lives) pulseHaptic(audioRef.current.vibrate);
         if (ratingLoadedRef.current && !frozen && modeBefore !== 'over' && state.mode === 'over') {
           const now = Date.now();
+          const board = recordRun(profileRef.current, state.score, state.wave, now);
+          profileRef.current = board;
+          setProfile(board);
+          void saveProfile(storeRef.current, board);
+          if (stateRef.current) stateRef.current.best = Math.max(state.best, board.bestScore);
           const next = recordDeath(ratingRef.current);
           if (shouldAskForRating(next, now)) {
             next.lastAskedAt = now;
@@ -379,6 +405,9 @@ export function GameScreen() {
         cue: () => cueRef.current,
         ui: () => uiRef.current,
         offerRating: () => offerRatingRef.current(),
+        openPause: () => openUiRef.current('pause'),
+        openScores: () => openUiRef.current('scores'),
+        openShips: () => openUiRef.current('ships'),
       });
       }
       frame = requestAnimationFrame(loop);
@@ -398,6 +427,10 @@ export function GameScreen() {
     uiRef.current = next;
     setUi(next);
     if (next !== 'none') controlsRef.current.clearTransient();
+  };
+  const openUi = (next: UiMode, back?: UiMode) => {
+    if (back !== undefined) returnRef.current = back;
+    openUiRef.current(next);
   };
   offerRatingRef.current = () => setRatingOffer(true);
 
@@ -442,8 +475,12 @@ export function GameScreen() {
             cue={cue}
             ui={ui}
             selected={selected}
-            onOpenSettings={() => openUiRef.current('settings')}
-            onCloseUi={() => openUiRef.current(ui === 'feedback' ? feedbackBackRef.current : 'none')}
+            onOpenSettings={() => openUi('settings', ui === 'pause' ? 'pause' : 'none')}
+            onCloseUi={() => {
+              const back = ui === 'feedback' ? feedbackBackRef.current : returnRef.current;
+              returnRef.current = 'none';
+              openUiRef.current(back);
+            }}
             onReplayTutorial={() => {
               tutorialRef.current = { ...FRESH_TUTORIAL };
               const current = stateRef.current;
@@ -500,6 +537,30 @@ export function GameScreen() {
               commitLayout(patchElement(hudLayoutRef.current, id, patch, field, inventoryCount), true);
             }}
             onResetLayout={() => commitLayout(defaultLayout(field), true)}
+            profile={profile}
+            onPlay={() => {
+              startRef.current = true;
+              if (Platform.OS === 'web') audio.unlock();
+            }}
+            onPause={() => openUi('pause', 'none')}
+            onResume={() => openUi('none')}
+            onQuit={() => {
+              const current = stateRef.current;
+              if (current) quitToMenu(current);
+              controlsRef.current.clearTransient();
+              openUi('none');
+            }}
+            onOpenScores={() => openUi('scores', ui === 'pause' ? 'pause' : 'none')}
+            onOpenShips={() => openUi('ships', 'none')}
+            onOpenPrivacy={() => openUi('privacy', 'none')}
+            closeLabel={returnRef.current === 'pause' ? 'Back' : hud.mode === 'playing' ? 'Resume' : 'Close'}
+            onSelectShip={(id) => {
+              const next = selectShip(profileRef.current, id);
+              profileRef.current = next;
+              setProfile(next);
+              if (stateRef.current) stateRef.current.shipId = next.shipId;
+              void saveProfile(storeRef.current, next);
+            }}
           />
         ) : null}
       </View>
@@ -570,6 +631,7 @@ function publishHud(
     Math.abs(prev.wingmanTimer - state.wingmanTimer) < 0.05 &&
     Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
     prev.missileLeft === state.missileLeft &&
+    prev.wave === state.wave &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
     prev.sectorName === sectorName &&
     prev.bossHp === (state.boss?.hp ?? 0) &&
@@ -598,6 +660,7 @@ function publishHud(
     wingmanTimer: state.wingmanTimer,
     warpTimer: state.warpTimer,
     missileLeft: state.missileLeft,
+    wave: state.wave,
     stickX,
     stickY,
     fireHeld,
@@ -651,6 +714,9 @@ function publishDebug(
     cue: () => TutorialCue;
     ui: () => UiMode;
     offerRating: () => void;
+    openPause: () => void;
+    openScores: () => void;
+    openShips: () => void;
   },
 ): void {
   if (Platform.OS !== 'web' || !debugEnabled()) return;
@@ -683,6 +749,9 @@ function publishDebug(
     closeUi: ui.closeUi,
     setTutorial: ui.setTutorial,
     offerRating: ui.offerRating,
+    openPause: ui.openPause,
+    openScores: ui.openScores,
+    openShips: ui.openShips,
   };
 }
 

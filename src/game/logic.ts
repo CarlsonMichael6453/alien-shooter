@@ -44,6 +44,8 @@ import {
 } from './constants';
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
+import { DEFAULT_SHIP } from './ships';
+import { WAVE_BREAK, bossSectorForWave, isBossWave, waveQuota } from './waves';
 import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Missile, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
 
 export interface Difficulty {
@@ -141,6 +143,10 @@ export function createGame(
     sector: 0,
     bossScore: nextBossScore(0),
     sectorBanner: 0,
+    wave: 1,
+    waveSpawned: 0,
+    waveBreak: 0,
+    shipId: DEFAULT_SHIP,
     spark: 0,
     hold: false,
     nextId: 1,
@@ -308,6 +314,9 @@ function restart(state: GameState): void {
   state.sector = 0;
   state.bossScore = nextBossScore(0);
   state.sectorBanner = SECTOR_BANNER;
+  state.wave = 1;
+  state.waveSpawned = 0;
+  state.waveBreak = 0;
   state.boss = null;
   state.enemyBullets = [];
   state.shipX = state.width / 2;
@@ -536,9 +545,31 @@ function fire(state: GameState, intent: Intent, dt: number): void {
   }
 }
 
+export function quitToMenu(state: GameState): void {
+  restart(state);
+  state.mode = 'ready';
+  state.sectorBanner = 0;
+  state.time = 0;
+}
+
 function spawnEnemies(state: GameState, dt: number): void {
-  maybeStartBoss(state);
+  if (state.waveBreak > 0) {
+    state.waveBreak = Math.max(0, state.waveBreak - dt);
+    if (state.waveBreak === 0) beginWave(state);
+    return;
+  }
+  if (isBossWave(state.wave)) {
+    if (!state.boss && state.waveSpawned === 0 && state.enemies.length === 0) startBoss(state);
+    return;
+  }
   if (state.boss) return;
+  if (state.waveSpawned >= waveQuota(state.wave)) {
+    if (state.enemies.length === 0) {
+      state.waveBreak = WAVE_BREAK;
+      state.sectorBanner = Math.max(state.sectorBanner, WAVE_BREAK);
+    }
+    return;
+  }
   state.spawnCooldown -= dt;
   if (state.spawnCooldown > 0) return;
   const diff = difficulty(state.time);
@@ -549,6 +580,7 @@ function spawnEnemies(state: GameState, dt: number): void {
   const theme = sectorTheme(state.sector);
   if (state.sector >= 1 && roll < 0.1 + theme.loop * 0.02) {
     spawnHeavy(state, diff.speed);
+    state.waveSpawned += 1;
     return;
   }
   const tier: 5 | 10 | 15 =
@@ -584,6 +616,14 @@ function spawnEnemies(state: GameState, dt: number): void {
     maxHp: tier,
     gun: tier === 5 ? 999 : 2.2,
   });
+  state.waveSpawned += 1;
+}
+
+function beginWave(state: GameState): void {
+  state.wave += 1;
+  state.waveSpawned = 0;
+  state.spawnCooldown = 0.45;
+  state.sectorBanner = SECTOR_BANNER;
 }
 
 function spawnPickups(state: GameState, dt: number): void {
@@ -814,7 +854,6 @@ function collide(state: GameState, dt: number): void {
   if (deadEnemies.size > 0) {
     state.enemies = state.enemies.filter((enemy) => !deadEnemies.has(enemy.id));
   }
-  maybeStartBoss(state);
 }
 
 function hurt(state: GameState, enemy: Enemy, amount: number, dead: Set<number>, chip: boolean): void {
@@ -1161,9 +1200,12 @@ function tickWingmen(state: GameState, dt: number): void {
   }
 }
 
-function maybeStartBoss(state: GameState): void {
-  if (state.mode !== 'playing' || state.boss || state.score < state.bossScore) return;
+function startBoss(state: GameState): void {
+  if (state.mode !== 'playing' || state.boss) return;
+  state.sector = bossSectorForWave(state.wave);
+  state.bossScore = nextBossScore(state.sector);
   const hp = bossHealth(state.sector);
+  state.waveSpawned = 1;
   state.enemies = [];
   state.boss = {
     hp,
@@ -1237,6 +1279,7 @@ function damageBoss(state: GameState, amount: number): void {
   state.sector += 1;
   state.bossScore = nextBossScore(state.sector);
   state.sectorBanner = SECTOR_BANNER;
+  state.waveBreak = WAVE_BREAK;
   explode(state, x, y, '#F4FBFF');
   const kind = rollPower(state.rng.next());
   state.pickups.push({

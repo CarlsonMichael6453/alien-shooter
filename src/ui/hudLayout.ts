@@ -2,6 +2,7 @@ import type { Kv } from './kv';
 
 export const LAYOUT_KEY = 'alien-shooter:hud-layout';
 export const GEAR_SIZE = 44;
+export const PAUSE_SIZE = 44;
 
 export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory', 'sector', 'joystick', 'fire'] as const;
 export const JOYSTICK_SIZE = 118;
@@ -77,8 +78,19 @@ export function gearRect(field: Field): HudRect {
   };
 }
 
+/** Fixed top-left control. It is not a layout-editor element, so a dragged HUD piece cannot replace it. */
+export function pauseRect(field: Field): HudRect {
+  return {
+    x: 12,
+    y: Math.max(8, field.top),
+    w: PAUSE_SIZE,
+    h: PAUSE_SIZE,
+  };
+}
+
 export function defaultLayout(field: Field): HudLayout {
   const gear = gearRect(field);
+  const pause = pauseRect(field);
   const livesW = elementSize('lives', 1, 1).w;
   const width = Math.max(1, field.width);
   const height = Math.max(1, field.height);
@@ -90,9 +102,9 @@ export function defaultLayout(field: Field): HudLayout {
   const slots = elementSize('inventory', 1, 3);
   const fireY = height - bottomPad - margin - fire.h;
   const elements: HudElement[] = [
-    { id: 'score', x: 16 / width, y: Math.max(8, field.top) / height, scale: 1, opacity: 1, visible: true },
-    { id: 'ammo', x: 16 / width, y: (Math.max(8, field.top) + 54) / height, scale: 1, opacity: 1, visible: true },
-    { id: 'lowAmmo', x: 16 / width, y: (Math.max(8, field.top) + 114) / height, scale: 1, opacity: 1, visible: true },
+    { id: 'score', x: 16 / width, y: (pause.y + pause.h + 8) / height, scale: 1, opacity: 1, visible: true },
+    { id: 'ammo', x: 16 / width, y: (pause.y + pause.h + 62) / height, scale: 1, opacity: 1, visible: true },
+    { id: 'lowAmmo', x: 16 / width, y: (pause.y + pause.h + 122) / height, scale: 1, opacity: 1, visible: true },
     {
       id: 'lives',
       x: Math.max(EDGE, gear.x - 10 - livesW) / width,

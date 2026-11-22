@@ -15,7 +15,7 @@ describe('sectors', () => {
     assert.equal(sectorTheme(9).loop, 1);
   });
 
-  it('triggers a boss every 1000 points and makes each one tougher', () => {
+  it('keeps the 1000-point sector step and the boss health curve', () => {
     assert.equal(SECTOR_SCORE, 1000);
     assert.equal(nextBossScore(0), 1000);
     assert.equal(nextBossScore(1), 2000);

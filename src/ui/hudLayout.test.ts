@@ -8,6 +8,7 @@ import {
   defaultLayout,
   elementBounds,
   gearRect,
+  pauseRect,
   inventoryRects,
   loadLayout,
   mergeLayout,
@@ -33,10 +34,12 @@ describe('hud layout', () => {
     const layout = defaultLayout(phone);
     assert.deepEqual(layout.elements.map((element) => element.id), [...HUD_IDS]);
     const gear = gearRect(phone);
+    const pause = pauseRect(phone);
     for (const element of layout.elements) {
       const bounds = elementBounds(element, phone, 3);
       assert.ok(inside(bounds, phone), element.id);
       assert.equal(overlaps(bounds, gear), false, element.id);
+      assert.equal(overlaps(bounds, pause), false, element.id);
     }
   });
 
