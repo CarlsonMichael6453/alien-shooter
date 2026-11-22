@@ -341,7 +341,12 @@ function HudPiece({
 
   return (
     <View
-      ref={markUi}
+      ref={(node) => {
+        const element = node as { setAttribute?: (name: string, value: string) => void; removeAttribute?: (name: string) => void } | null;
+        if (!element?.setAttribute || !element.removeAttribute) return;
+        if (editing) element.setAttribute('data-alien-ui', '1');
+        else element.removeAttribute('data-alien-ui');
+      }}
       collapsable={false}
       pointerEvents={editing ? 'auto' : 'none'}
       {...(editing && Platform.OS !== 'web' ? pan.panHandlers : null)}
