@@ -5,7 +5,9 @@ export const GEAR_SIZE = 44;
 
 export const HUD_IDS = ['score', 'ammo', 'lowAmmo', 'lives', 'inventory', 'sector', 'joystick', 'fire'] as const;
 export const JOYSTICK_SIZE = 118;
-export const FIRE_BUTTON_SIZE = 96;
+export const FIRE_BUTTON_SIZE = 80;
+export const SLOT_SIZE = 46;
+export const SLOT_GAP = 6;
 export type HudElementId = (typeof HUD_IDS)[number];
 
 export interface HudElement {
@@ -61,8 +63,8 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
   if (id === 'joystick') return { w: JOYSTICK_SIZE * scale, h: JOYSTICK_SIZE * scale };
   if (id === 'fire') return { w: FIRE_BUTTON_SIZE * scale, h: FIRE_BUTTON_SIZE * scale };
   const count = Math.max(1, Math.min(3, inventoryCount));
-  const slot = 56 * scale;
-  const gap = 8 * scale;
+  const slot = SLOT_SIZE * scale;
+  const gap = SLOT_GAP * scale;
   return { w: slot * count + gap * (count - 1), h: slot };
 }
 
@@ -80,6 +82,13 @@ export function defaultLayout(field: Field): HudLayout {
   const livesW = elementSize('lives', 1, 1).w;
   const width = Math.max(1, field.width);
   const height = Math.max(1, field.height);
+  const bottomPad = Math.max(8, field.bottom);
+  const margin = 14;
+  const stackGap = 8;
+  const fire = elementSize('fire', 1, 1);
+  const joy = elementSize('joystick', 1, 1);
+  const slots = elementSize('inventory', 1, 3);
+  const fireY = height - bottomPad - margin - fire.h;
   const elements: HudElement[] = [
     { id: 'score', x: 16 / width, y: Math.max(8, field.top) / height, scale: 1, opacity: 1, visible: true },
     { id: 'ammo', x: 16 / width, y: (Math.max(8, field.top) + 54) / height, scale: 1, opacity: 1, visible: true },
@@ -94,17 +103,8 @@ export function defaultLayout(field: Field): HudLayout {
     },
     {
       id: 'inventory',
-      x: (width - 16 - elementSize('inventory', 1, 3).w) / width,
-      y:
-        (field.height -
-          Math.max(8, field.bottom) -
-          16 -
-          56 -
-          12 -
-          FIRE_BUTTON_SIZE -
-          12 -
-          elementSize('inventory', 1, 3).h) /
-        height,
+      x: (width - margin - slots.w) / width,
+      y: (fireY - stackGap - slots.h) / height,
       scale: 1,
       opacity: 1,
       visible: true,
@@ -120,15 +120,15 @@ export function defaultLayout(field: Field): HudLayout {
     {
       id: 'joystick',
       x: 16 / width,
-      y: (field.height - Math.max(8, field.bottom) - 16 - 56 - 12 - JOYSTICK_SIZE) / height,
+      y: (height - bottomPad - margin - joy.h) / height,
       scale: 1,
       opacity: 1,
       visible: true,
     },
     {
       id: 'fire',
-      x: (width - 16 - FIRE_BUTTON_SIZE) / width,
-      y: (field.height - Math.max(8, field.bottom) - 16 - 56 - 12 - FIRE_BUTTON_SIZE) / height,
+      x: (width - margin - fire.w) / width,
+      y: fireY / height,
       scale: 1,
       opacity: 1,
       visible: true,
@@ -201,8 +201,8 @@ export function patchElement(layout: HudLayout, id: HudElementId, patch: Partial
 export function inventoryRects(element: HudElement, field: Field, count: number, offsetX: number): HudRect[] {
   if (!element.visible || count <= 0) return [];
   const placed = clampElement(element, field, count);
-  const slot = 56 * placed.scale;
-  const gap = 8 * placed.scale;
+  const slot = SLOT_SIZE * placed.scale;
+  const gap = SLOT_GAP * placed.scale;
   const left = placed.x * field.width + offsetX;
   const top = placed.y * field.height;
   return Array.from({ length: Math.min(3, count) }, (_, index) => ({
@@ -246,6 +246,15 @@ export function parseLayout(raw: string | null): HudElement[] | null {
   } catch {
     return null;
   }
+}
+
+const BUTTON_IDS = new Set<HudElementId>(['fire', 'inventory', 'joystick']);
+
+export function resetButtonLayout(layout: HudLayout, field: Field): HudLayout {
+  const defaults = new Map(defaultLayout(field).elements.map((element) => [element.id, element]));
+  return {
+    elements: layout.elements.map((element) => (BUTTON_IDS.has(element.id) ? { ...defaults.get(element.id)! } : element)),
+  };
 }
 
 export function mergeLayout(saved: HudElement[] | null, field: Field): HudLayout {

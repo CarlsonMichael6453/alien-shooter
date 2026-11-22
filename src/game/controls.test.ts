@@ -178,6 +178,7 @@ describe('joystick controls', () => {
 
   it('steers from the stick and fires from the button at the same time', () => {
     const controls = new Controls();
+    controls.setScheme('joystick');
     controls.setActionRects(stick, fire);
     controls.pointerDown(1, 110, 600, 180, 640);
     controls.pointerDown(2, 280, 560, 180, 640);
@@ -193,6 +194,7 @@ describe('joystick controls', () => {
 
   it('ignores a touch that misses both pads', () => {
     const controls = new Controls();
+    controls.setScheme('joystick');
     controls.setActionRects(stick, fire);
     controls.pointerDown(3, 180, 200, 100, 100);
     const frame = controls.frame();
@@ -204,6 +206,7 @@ describe('joystick controls', () => {
 
   it('still lets the mouse drag while the pads are the touch controls', () => {
     const controls = new Controls();
+    controls.setScheme('joystick');
     controls.setActionRects(stick, fire);
     controls.mouseDown(0, 10, 10, 40, 50);
     controls.mouseMove(30, 20);
@@ -211,6 +214,22 @@ describe('joystick controls', () => {
     assert.equal(frame.moveActive, true);
     assert.equal(frame.targetX, 40 + 20 * DRAG_FOLLOW);
     assert.equal(frame.targetY, 50 + 10 * DRAG_FOLLOW);
+  });
+
+  it('lets a left-side drag steer while the fire button fires', () => {
+    const controls = new Controls();
+    controls.setActionRects(stick, fire);
+    controls.pointerDown(1, 40, 200, 180, 640);
+    controls.pointerDown(2, 280, 560, 180, 640);
+    controls.pointerMove(1, 70, 180);
+    const frame = controls.frame();
+    assert.equal(frame.moveActive, true);
+    assert.equal(frame.firing, true);
+    assert.equal(frame.targetX, 180 + 30 * DRAG_FOLLOW);
+    assert.equal(frame.targetY, 640 - 20 * DRAG_FOLLOW);
+    controls.pointerDown(3, 90, 220, 180, 640);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.moveId, 1);
   });
 
   it('crawls just outside the dead zone and reaches full speed only at the rim', () => {

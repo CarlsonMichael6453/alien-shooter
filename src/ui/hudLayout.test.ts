@@ -107,8 +107,9 @@ describe('hud layout', () => {
     assert.ok(slots.x + slots.w / 2 > phone.width / 2);
     assert.ok(slots.x + slots.w > fire.x + fire.w - 1);
     assert.ok(slots.y + slots.h <= fire.y + 0.5);
-    assert.equal(parseControlScheme(null), 'joystick');
+    assert.equal(parseControlScheme(null), 'drag');
     assert.equal(parseControlScheme('drag'), 'drag');
-    assert.equal(parseControlScheme('nope'), 'joystick');
+    assert.equal(parseControlScheme('joystick'), 'joystick');
+    assert.equal(parseControlScheme('nope'), 'drag');
   });
 });

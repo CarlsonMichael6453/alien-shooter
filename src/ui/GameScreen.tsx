@@ -19,11 +19,13 @@ import { GameCanvas } from '../render/GameCanvas';
 import type { GameCanvasHandle } from '../render/types';
 import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
+import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
   defaultLayout,
   elementBounds,
+  resetButtonLayout,
   gearRect,
   inventoryRects,
   loadLayout,
@@ -73,6 +75,7 @@ const INITIAL_HUD: HudModel = {
   shieldTimer: 0,
   wingmanTimer: 0,
   warpTimer: 0,
+  missileLeft: 0,
 };
 
 interface DebugSnapshot {
@@ -123,6 +126,7 @@ export function GameScreen() {
   const stateRef = useRef<GameState | null>(null);
   const controlsRef = useRef(new Controls());
   const canvasRef = useRef<GameCanvasHandle>(null);
+  const pickupsRef = useRef<ArenaPickupHandle>(null);
   const playfieldRef = useRef(playfield);
   const offsetRef = useRef(0);
   const bottomRef = useRef(14);
@@ -151,9 +155,9 @@ export function GameScreen() {
   const feedbackBackRef = useRef<UiMode>('settings');
   const offerRatingRef = useRef(() => {});
   const [audioUi, setAudioUi] = useState<AudioSettings>({ music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true });
-  const [scheme, setScheme] = useState<ControlScheme>('joystick');
-  const schemeRef = useRef<ControlScheme>('joystick');
-  const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, primed: false });
+  const [scheme, setScheme] = useState<ControlScheme>('drag');
+  const schemeRef = useRef<ControlScheme>('drag');
+  const audioPrev = useRef({ shots: 0, score: 0, lives: 3, blast: false, boss: false, pickups: 0, shield: 0, wing: 0, warp: 0, rapid: 0, laser: 0, enemyShots: 0, missileLeft: 0, primed: false });
   const topRef = useRef(14);
   const fieldRef = useRef<Field>({ width: 0, height: 0, top: 14, bottom: 14 });
   playfieldRef.current = playfield;
@@ -292,12 +296,12 @@ export function GameScreen() {
           uiRef.current === 'none' ? [{ ...gear, x: gear.x + offsetRef.current }] : [],
         );
         controlsRef.current.setScheme(schemeRef.current);
-        const showPads = schemeRef.current === 'joystick' && uiRef.current === 'none';
+        const playingUi = uiRef.current === 'none';
         const stick = hudLayoutRef.current?.elements.find((element) => element.id === 'joystick');
         const fire = hudLayoutRef.current?.elements.find((element) => element.id === 'fire');
         controlsRef.current.setActionRects(
-          showPads && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
-          showPads && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
+          playingUi && schemeRef.current === 'joystick' && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
+          playingUi && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
         );
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
@@ -357,6 +361,7 @@ export function GameScreen() {
         }
         if (Platform.OS === 'web') syncAudio(state, audioPrev.current);
         canvasRef.current?.draw(state);
+        pickupsRef.current?.sync(state);
         publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
@@ -419,13 +424,14 @@ export function GameScreen() {
     <View
       nativeID="alien-shooter-root"
       collapsable={false}
-      accessibilityLabel="Alien Shooter. Drag the stick to move. Hold the fire button to shoot."
+      accessibilityLabel="Alien Shooter. Drag to move. Hold the fire button to shoot."
       style={[styles.root, webTouch as object]}
       {...nativeTouchProps(controlsRef, stateRef, uiRef, () => onPressRef.current())}
     >
       <View pointerEvents="box-none" style={{ width: playfield.width, height: playfield.height }}>
         <View pointerEvents="none" style={styles.playfield}>
           <GameCanvas ref={canvasRef} width={playfield.width} height={playfield.height} />
+          <ArenaPickups ref={pickupsRef} />
         </View>
         {layout ? (
           <Overlay
@@ -475,6 +481,11 @@ export function GameScreen() {
               void saveControlScheme(storeRef.current, next);
             }}
             onEditHud={() => openUiRef.current('editor')}
+            onEditButtons={() => openUiRef.current('buttons')}
+            onResetButtons={() => {
+              if (!hudLayoutRef.current) return;
+              commitLayout(resetButtonLayout(hudLayoutRef.current, field), true);
+            }}
             onDoneEditing={() => openUiRef.current('settings')}
             onSelect={setSelected}
             onPlace={(id, x, y) => {
@@ -537,15 +548,11 @@ function publishHud(
         : state.laserTimer > 0
           ? finePointer
             ? 'Point the mouse to aim the laser'
-            : scheme === 'joystick'
-              ? 'Drag the fire button to aim'
-              : 'Move the firing finger to aim'
+            : 'Drag the fire button to aim'
           : state.shotsFired === 0 && state.time < 8
             ? finePointer
-              ? 'Hold Space to fire'
-              : scheme === 'joystick'
-                ? 'Hold the fire button'
-                : 'Hold a second finger to fire'
+              ? 'Hold Space or the fire button'
+              : 'Hold the fire button'
             : null;
   const prev = hudRef.current;
   if (
@@ -562,6 +569,7 @@ function publishHud(
     Math.abs(prev.shieldTimer - state.shieldTimer) < 0.05 &&
     Math.abs(prev.wingmanTimer - state.wingmanTimer) < 0.05 &&
     Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
+    prev.missileLeft === state.missileLeft &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
     prev.sectorName === sectorName &&
     prev.bossHp === (state.boss?.hp ?? 0) &&
@@ -589,6 +597,7 @@ function publishHud(
     shieldTimer: state.shieldTimer,
     wingmanTimer: state.wingmanTimer,
     warpTimer: state.warpTimer,
+    missileLeft: state.missileLeft,
     stickX,
     stickY,
     fireHeld,
@@ -597,7 +606,7 @@ function publishHud(
   setHud(next);
 }
 
-function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; primed: boolean }): void {
+function syncAudio(state: GameState, prev: { shots: number; score: number; lives: number; blast: boolean; boss: boolean; pickups: number; shield: number; wing: number; warp: number; rapid: number; laser: number; enemyShots: number; missileLeft: number; primed: boolean }): void {
   if (prev.primed) {
     if (state.shotsFired > prev.shots) audio.shoot();
     if (state.score > prev.score) audio.hit();
@@ -611,6 +620,7 @@ function syncAudio(state: GameState, prev: { shots: number; score: number; lives
     if (state.wingmanTimer > 0 && prev.wing === 0) audio.power('wingman');
     if (state.warpTimer > 0 && prev.warp === 0) audio.power('warp');
     if (state.rapidTimer > 0 && prev.rapid === 0) audio.power('rapid');
+    if (state.missileLeft > 0 && prev.missileLeft === 0) audio.power('missiles');
     if (state.laserTimer > 0 && prev.laser === 0) audio.power('laser');
   }
   prev.primed = true;
@@ -626,6 +636,7 @@ function syncAudio(state: GameState, prev: { shots: number; score: number; lives
   prev.rapid = state.rapidTimer;
   prev.laser = state.laserTimer;
   prev.enemyShots = state.enemyBullets.length;
+  prev.missileLeft = state.missileLeft;
   if (state.mode === 'playing') audio.tickMusic(state.sector, state.boss != null);
 }
 

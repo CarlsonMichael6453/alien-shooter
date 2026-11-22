@@ -8,7 +8,7 @@ That link goes live after this branch is merged to `main` and the Pages workflow
 
 ## How to play
 
-- Drag the stick on the left to move. Hold the fire button on the right to shoot, and lift it to stop. Settings can switch back to the old drag-anywhere controls, and that choice is saved.
+- Drag on the left to move. Hold the fire button on the right to shoot, and lift it to stop. Settings has a Joystick switch that replaces the drag with the analog stick, and Edit button layout saves where those buttons sit.
 - You start with 200 rounds. Each bullet spends one. Ammo boxes marked 100, 200, and 400 drift down; fly into them to reload. The 100 box is the common one and the 400 box is rare.
 - Scouts have 5 health, saucers 10, and big gold cruisers 15. A bullet does 1 damage, and a bar over each ship shows what is left. Tougher ships show up less often.
 - Power-ups are not used the moment you touch them. Their icons start on the right, stacked above the fire button, up to three at a time, including duplicates. A fourth pickup stays in space until a slot is free. Lift the firing finger and tap an icon (or press 1, 2, or 3). Only one power-up runs at a time; the others dim until it ends.

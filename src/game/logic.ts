@@ -23,6 +23,11 @@ import {
   MAX_BULLETS,
   MAX_INVENTORY,
   MAX_PARTICLES,
+  MISSILE_COUNT,
+  MISSILE_DAMAGE,
+  MISSILE_INTERVAL,
+  MISSILE_SPEED,
+  MISSILE_TURN,
   RAPID_CONE,
   RAPID_DURATION,
   RAPID_RATE,
@@ -39,7 +44,7 @@ import {
 } from './constants';
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
-import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
+import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Missile, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
 
 export interface Difficulty {
   spawnInterval: number;
@@ -131,6 +136,8 @@ export function createGame(
     wingmanTimer: 0,
     wingmanCooldown: 0,
     warpTimer: 0,
+    missileLeft: 0,
+    missileCooldown: 0,
     sector: 0,
     bossScore: nextBossScore(0),
     sectorBanner: 0,
@@ -138,6 +145,7 @@ export function createGame(
     hold: false,
     nextId: 1,
     bullets: [],
+    missiles: [],
     enemyBullets: [],
     enemies: [],
     pickups: [],
@@ -195,6 +203,10 @@ export function resizeGame(state: GameState, width: number, height: number): voi
   for (const bullet of state.bullets) {
     bullet.x *= sx;
     bullet.y *= sy;
+  }
+  for (const missile of state.missiles) {
+    missile.x *= sx;
+    missile.y *= sy;
   }
   for (const pickup of state.pickups) {
     pickup.x *= sx;
@@ -267,6 +279,7 @@ export function step(state: GameState, intent: Intent, dt: number): void {
   moveEnemyBullets(state, frame);
   tickHeavyGuns(state, frame);
   tickWingmen(state, frame);
+  tickMissiles(state, frame);
   tickBoss(state, frame);
   movePickups(state, frame);
   moveParticles(state, frame);
@@ -289,6 +302,9 @@ function restart(state: GameState): void {
   state.wingmanTimer = 0;
   state.wingmanCooldown = 0;
   state.warpTimer = 0;
+  state.missileLeft = 0;
+  state.missileCooldown = 0;
+  state.missiles = [];
   state.sector = 0;
   state.bossScore = nextBossScore(0);
   state.sectorBanner = SECTOR_BANNER;
@@ -371,6 +387,8 @@ function powerActive(state: GameState): boolean {
     state.shieldTimer > 0 ||
     state.wingmanTimer > 0 ||
     state.warpTimer > 0 ||
+    state.missileLeft > 0 ||
+    state.missiles.length > 0 ||
     state.bomb != null ||
     state.blast != null
   );
@@ -402,6 +420,11 @@ function activatePower(state: GameState, intent: Intent): void {
   }
   if (kind === 'warp') {
     state.warpTimer = WARP_DURATION;
+    return;
+  }
+  if (kind === 'missiles') {
+    state.missileLeft = MISSILE_COUNT;
+    state.missileCooldown = 0;
     return;
   }
   state.bomb = {
@@ -665,6 +688,26 @@ function collide(state: GameState, dt: number): void {
     }
   }
 
+  const flying: Missile[] = [];
+  for (const missile of state.missiles) {
+    let hit = false;
+    for (const enemy of state.enemies) {
+      if (deadEnemies.has(enemy.id)) continue;
+      if (!hits(missile.x, missile.y, 7, enemy.x, enemy.y, enemy.r)) continue;
+      hurt(state, enemy, MISSILE_DAMAGE, deadEnemies, false);
+      hit = true;
+      break;
+    }
+    if (!hit && state.boss && hits(missile.x, missile.y, 7, state.boss.x, state.boss.y, 54)) {
+      damageBoss(state, MISSILE_DAMAGE);
+      hit = true;
+    }
+    if (!hit) flying.push(missile);
+  }
+  state.missiles = flying.filter(
+    (missile) => missile.y > -50 && missile.y < state.height + 50 && missile.x > -50 && missile.x < state.width + 50,
+  );
+
   if (state.laserTimer > 0) {
     const nose = beamNose(state);
     const reach = 1600;
@@ -885,11 +928,12 @@ function clampShip(state: GameState): void {
 }
 
 function rollPower(roll: number): PowerKind {
-  if (roll < 0.22) return 'rapid';
-  if (roll < 0.4) return 'bomb';
-  if (roll < 0.58) return 'laser';
-  if (roll < 0.74) return 'shield';
-  if (roll < 0.88) return 'wingman';
+  if (roll < 0.18) return 'rapid';
+  if (roll < 0.33) return 'bomb';
+  if (roll < 0.48) return 'laser';
+  if (roll < 0.62) return 'shield';
+  if (roll < 0.74) return 'wingman';
+  if (roll < 0.88) return 'missiles';
   return 'warp';
 }
 
@@ -993,6 +1037,111 @@ function moveEnemyBullets(state: GameState, dt: number): void {
   state.enemyBullets = state.enemyBullets.filter(
     (bullet) => bullet.y < state.height + 30 && bullet.y > -40 && bullet.x > -40 && bullet.x < state.width + 40,
   );
+}
+
+export interface MissileAim {
+  boss: boolean;
+  id: number | null;
+  x: number;
+  y: number;
+  score: number;
+}
+
+function threatWeight(enemy: Enemy): number {
+  const body =
+    enemy.shape === 'battleship' ? 70 : enemy.shape === 'carrier' ? 55 : enemy.shape === 'cruiser' ? 28 : enemy.shape === 'saucer' ? 16 : enemy.shape === 'rock' ? 10 : 12;
+  return body + (enemy.gun < 900 ? 14 : 0) + enemy.hp * 0.35;
+}
+
+function threatScore(state: GameState, x: number, y: number, weight: number): number {
+  const dist = Math.max(28, Math.hypot(x - state.shipX, y - state.shipY));
+  const low = clamp(y / Math.max(1, state.height), 0, 1);
+  return (weight * (1 + 0.9 * low)) / dist;
+}
+
+export function chooseMissileTarget(state: GameState): MissileAim | null {
+  let best: MissileAim | null = null;
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    const score = threatScore(state, enemy.x, enemy.y, threatWeight(enemy));
+    if (!best || score > best.score) best = { boss: false, id: enemy.id, x: enemy.x, y: enemy.y, score };
+  }
+  if (state.boss && state.boss.hp > 0) {
+    const score = threatScore(state, state.boss.x, state.boss.y, 240 + state.boss.hp * 0.4);
+    if (!best || score > best.score) best = { boss: true, id: null, x: state.boss.x, y: state.boss.y, score };
+  }
+  return best;
+}
+
+function lockMissile(state: GameState, missile: Missile, aim: MissileAim | null): { x: number; y: number } | null {
+  if (missile.boss && state.boss && state.boss.hp > 0) return { x: state.boss.x, y: state.boss.y };
+  if (!missile.boss && missile.targetId != null) {
+    const enemy = state.enemies.find((item) => item.id === missile.targetId && item.hp > 0);
+    if (enemy) return { x: enemy.x, y: enemy.y };
+  }
+  missile.boss = false;
+  missile.targetId = null;
+  if (!aim) return null;
+  missile.boss = aim.boss;
+  missile.targetId = aim.id;
+  return { x: aim.x, y: aim.y };
+}
+
+function turnToward(current: number, desired: number, maxStep: number): number {
+  let delta = desired - current;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return current + clamp(delta, -maxStep, maxStep);
+}
+
+function launchMissile(state: GameState): void {
+  const aim = chooseMissileTarget(state);
+  const missile: Missile = {
+    x: state.shipX,
+    y: state.shipY - 18,
+    angle: -Math.PI / 2 + (state.rng.next() - 0.5) * 0.55,
+    targetId: aim && !aim.boss ? aim.id : null,
+    boss: aim?.boss ?? false,
+    smoke: 0,
+  };
+  state.missiles.push(missile);
+}
+
+function tickMissiles(state: GameState, dt: number): void {
+  if (state.missileLeft > 0) {
+    state.missileCooldown -= dt;
+    let guard = 0;
+    while (state.missileCooldown <= 0 && state.missileLeft > 0 && guard < 3) {
+      launchMissile(state);
+      state.missileLeft -= 1;
+      state.missileCooldown += MISSILE_INTERVAL;
+      guard += 1;
+    }
+  }
+  const aim = chooseMissileTarget(state);
+  for (const missile of state.missiles) {
+    const target = lockMissile(state, missile, aim);
+    if (target) {
+      const desired = Math.atan2(target.y - missile.y, target.x - missile.x);
+      missile.angle = turnToward(missile.angle, desired, MISSILE_TURN * dt);
+    }
+    missile.x += Math.cos(missile.angle) * MISSILE_SPEED * dt;
+    missile.y += Math.sin(missile.angle) * MISSILE_SPEED * dt;
+    missile.smoke -= dt;
+    if (missile.smoke <= 0) {
+      missile.smoke = 0.05;
+      pushParticle(state, {
+        x: missile.x - Math.cos(missile.angle) * 8,
+        y: missile.y - Math.sin(missile.angle) * 8,
+        vx: -Math.cos(missile.angle) * 18,
+        vy: -Math.sin(missile.angle) * 18,
+        life: 0.28,
+        maxLife: 0.28,
+        r: 2.2,
+        color: '#C9D4E0',
+      });
+    }
+  }
 }
 
 function tickWingmen(state: GameState, dt: number): void {

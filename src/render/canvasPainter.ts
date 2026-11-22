@@ -46,6 +46,20 @@ export function createCanvasPainter(ctx: CanvasRenderingContext2D): Painter {
       ctx.closePath();
       ctx.fill();
     },
+    strokePolygon(points, color, width) {
+      if (points.length < 3) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = color;
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    },
     fillRoundRect(x, y, w, h, radius, color) {
       const r = Math.max(0, Math.min(radius, w / 2, h / 2));
       ctx.beginPath();

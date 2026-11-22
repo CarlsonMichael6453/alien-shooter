@@ -5,7 +5,7 @@ export type ControlScheme = 'joystick' | 'drag';
 export const CONTROLS_KEY = 'alien-shooter:controls';
 
 export function parseControlScheme(raw: string | null): ControlScheme {
-  return raw === 'drag' ? 'drag' : 'joystick';
+  return raw === 'joystick' ? 'joystick' : 'drag';
 }
 
 export async function loadControlScheme(store: Kv): Promise<ControlScheme> {

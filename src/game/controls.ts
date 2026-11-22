@@ -73,7 +73,7 @@ export class Controls {
   private chromeRects: BombRect[] = [];
   private stickRect: BombRect | null = null;
   private fireRect: BombRect | null = null;
-  private scheme: ControlScheme = 'joystick';
+  private scheme: ControlScheme = 'drag';
   private powerRequest: number | null = null;
   private chromeRequest = false;
 
@@ -126,6 +126,11 @@ export class Controls {
       return 'chrome';
     }
     if (this.scheme === 'joystick' && id >= 0) return this.claimPad(id, x, y, shipX, shipY);
+    if (id >= 0 && this.fireId == null && this.inside(this.fireRect, x, y)) {
+      this.fireId = id;
+      this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
+      return 'play';
+    }
     if (this.moveId == null) {
       this.moveId = id;
       this.pointers.set(id, {
@@ -140,7 +145,7 @@ export class Controls {
       });
       return 'play';
     }
-    if (this.fireId == null) {
+    if (this.fireRect == null && this.fireId == null) {
       this.fireId = id;
       this.pointers.set(id, {
         id,

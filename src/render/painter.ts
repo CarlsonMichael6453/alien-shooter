@@ -8,6 +8,7 @@ export interface Painter {
   strokeCircle(x: number, y: number, r: number, color: string, width: number): void;
   fillEllipse(x: number, y: number, rx: number, ry: number, color: string): void;
   fillPolygon(points: ReadonlyArray<readonly [number, number]>, color: string): void;
+  strokePolygon(points: ReadonlyArray<readonly [number, number]>, color: string, width: number): void;
   fillRoundRect(x: number, y: number, w: number, h: number, radius: number, color: string): void;
   fillVerticalGradient(x: number, y: number, w: number, h: number, colors: readonly string[]): void;
 }

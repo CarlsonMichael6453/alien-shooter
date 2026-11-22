@@ -13,6 +13,7 @@ import {
 import type { TutorialCue } from './tutorial';
 import type { AudioSettings } from '../audio/arcade';
 import type { ControlScheme } from './controlsMode';
+import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 
 export interface HudModel {
@@ -33,12 +34,13 @@ export interface HudModel {
   shieldTimer: number;
   wingmanTimer: number;
   warpTimer: number;
+  missileLeft: number;
   stickX: number;
   stickY: number;
   fireHeld: boolean;
 }
 
-export type UiMode = 'none' | 'settings' | 'editor' | 'feedback';
+export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback';
 
 interface Props {
   model: HudModel;
@@ -57,6 +59,8 @@ interface Props {
   onLater: () => void;
   onNever: () => void;
   onEditHud: () => void;
+  onEditButtons: () => void;
+  onResetButtons: () => void;
   onDoneEditing: () => void;
   onSelect: (id: HudElementId) => void;
   onPlace: (id: HudElementId, x: number, y: number) => void;
@@ -93,6 +97,8 @@ export function Overlay({
   onLater,
   onNever,
   onEditHud,
+  onEditButtons,
+  onResetButtons,
   onDoneEditing,
   onSelect,
   onPlace,
@@ -105,7 +111,9 @@ export function Overlay({
   onScheme,
 }: Props) {
   const playing = model.mode === 'playing';
-  const editing = ui === 'editor';
+  const editingHud = ui === 'editor';
+  const editingButtons = ui === 'buttons';
+  const editing = editingHud || editingButtons;
   const inventory = layout.elements.find((element) => element.id === 'inventory');
   const inventoryCount = Math.max(model.inventory.length, editing ? 3 : 0);
   const showHud = playing || editing;
@@ -118,7 +126,8 @@ export function Overlay({
             if (!element.visible && !editing) return null;
             if (element.id === 'inventory' && model.inventory.length === 0 && !editing) return null;
             if (element.id === 'lowAmmo' && model.ammo > 30 && !editing) return null;
-            if ((element.id === 'joystick' || element.id === 'fire') && scheme !== 'joystick' && !editing) return null;
+            if (editingButtons && element.id !== 'fire' && element.id !== 'inventory' && element.id !== 'joystick') return null;
+            if (element.id === 'joystick' && scheme !== 'joystick' && !editingHud) return null;
             const count = element.id === 'inventory' ? Math.max(1, inventoryCount) : 1;
             const bounds = elementBounds(element, field, count);
             return (
@@ -178,6 +187,7 @@ export function Overlay({
           onReplay={onReplayTutorial}
           onFeedback={onOpenFeedback}
           onEdit={onEditHud}
+          onEditButtons={onEditButtons}
           audio={audio}
           onAudio={onAudio}
           scheme={scheme}
@@ -185,7 +195,10 @@ export function Overlay({
         />
       ) : null}
       {ui === 'feedback' ? <FeedbackForm onClose={onCloseUi} /> : null}
-      {editing ? (
+      {editingButtons ? (
+        <ButtonLayoutBar field={field} onReset={onResetButtons} onDone={onDoneEditing} />
+      ) : null}
+      {editingHud ? (
         <EditorBar
           field={field}
           element={layout.elements.find((element) => element.id === selected) ?? layout.elements[0]}
@@ -415,12 +428,13 @@ function ElementBody({
         {model.shieldTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SHIELD {model.shieldTimer.toFixed(1)}</Text> : null}
         {model.wingmanTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>WING {model.wingmanTimer.toFixed(1)}</Text> : null}
         {model.warpTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>WARP {model.warpTimer.toFixed(1)}</Text> : null}
+        {model.missileLeft > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SWARM {model.missileLeft}</Text> : null}
       </View>
     );
   }
   const slots = model.inventory.length > 0 ? model.inventory : editing ? GHOSTS : [];
-  const slot = 56 * scale;
-  const gap = 8 * scale;
+  const slot = 46 * scale;
+  const gap = 6 * scale;
   return (
     <View style={[styles.inventory, { width, height, gap, opacity: model.powerOn && !editing ? 0.38 : 1 }]}>
       {slots.map((kind, index) => (
@@ -436,7 +450,7 @@ function ElementBody({
             },
           ]}
         >
-          <PowerGlyph kind={kind} />
+          <AbilityGlyph kind={kind} size={slot} />
         </View>
       ))}
     </View>
@@ -491,26 +505,8 @@ function TutorialPrompt({
       </View>
     );
   }
-  const title =
-    scheme === 'joystick'
-      ? cue === 'move'
-        ? 'Drag the stick to move'
-        : 'Hold the fire button'
-      : cue === 'move'
-        ? 'Press anywhere to move'
-        : 'Press again to shoot';
-  const detail =
-    scheme === 'joystick'
-      ? cue === 'move'
-        ? 'Left side'
-        : 'Right side'
-      : cue === 'move'
-        ? finePointer
-          ? 'Drag, or use WASD'
-          : ''
-        : finePointer
-          ? 'Hold Space'
-          : 'Second finger';
+  const title = scheme === 'joystick' ? (cue === 'move' ? 'Drag the stick to move' : 'Hold the fire button') : cue === 'move' ? 'Drag to move' : 'Hold the fire button';
+  const detail = scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
   return (
     <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
       <Text style={styles.promptTitle}>{title}</Text>
@@ -570,8 +566,8 @@ function StartCard({ finePointer, scheme }: { finePointer: boolean; scheme: Cont
           </>
         ) : (
           <>
-            <Text style={styles.body}>Drag one finger to move the ship. It follows the drag, so your thumb never covers it.</Text>
-            <Text style={styles.body}>Hold a second finger anywhere to fire upward. Lift it to stop.</Text>
+            <Text style={styles.body}>Drag on the left to move the ship. It follows your finger.</Text>
+            <Text style={styles.body}>Hold the fire button on the right to shoot. Lift it to stop.</Text>
           </>
         )}
         {finePointer ? (
@@ -614,6 +610,7 @@ function SettingsMenu({
   onReplay,
   onFeedback,
   onEdit,
+  onEditButtons,
   audio,
   onAudio,
   scheme,
@@ -624,6 +621,7 @@ function SettingsMenu({
   onReplay: () => void;
   onFeedback: () => void;
   onEdit: () => void;
+  onEditButtons: () => void;
   audio: AudioSettings;
   onAudio: (patch: Partial<AudioSettings>) => void;
   scheme: ControlScheme;
@@ -638,13 +636,16 @@ function SettingsMenu({
         <Text style={styles.kicker}>{paused ? 'PAUSED' : 'OPTIONS'}</Text>
         <Text style={styles.menuTitle}>SETTINGS</Text>
         <Text style={styles.menuBody}>Tutorials, controls, and the HUD layout stay on this device.</Text>
-        <Text style={styles.schemeLabel}>Controls</Text>
-        <View style={styles.schemeRow}>
-          <Pressable accessibilityRole="button" onPress={() => onScheme('joystick')} style={[styles.schemeButton, scheme === 'joystick' ? styles.schemeOn : null]}>
-            <Text style={[styles.schemeText, scheme === 'joystick' ? styles.schemeTextOn : null]}>Joystick + Fire</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => onScheme('drag')} style={[styles.schemeButton, scheme === 'drag' ? styles.schemeOn : null]}>
-            <Text style={[styles.schemeText, scheme === 'drag' ? styles.schemeTextOn : null]}>Drag + finger</Text>
+        <View style={styles.toggleRow}>
+          <Text style={styles.schemeLabel}>Joystick</Text>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: scheme === 'joystick' }}
+            accessibilityLabel="Joystick"
+            onPress={() => onScheme(scheme === 'joystick' ? 'drag' : 'joystick')}
+            style={[styles.toggle, scheme === 'joystick' ? styles.toggleOn : null]}
+          >
+            <View style={[styles.toggleKnob, scheme === 'joystick' ? styles.toggleKnobOn : null]} />
           </Pressable>
         </View>
         <Pressable accessibilityRole="button" onPress={onReplay} style={styles.menuButton}>
@@ -652,6 +653,9 @@ function SettingsMenu({
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onEdit} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Edit HUD</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onEditButtons} style={styles.menuButton}>
+          <Text style={styles.menuButtonText}>Edit button layout</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onFeedback} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>Feedback</Text>
@@ -662,6 +666,21 @@ function SettingsMenu({
           <Text style={styles.menuPrimaryText}>{paused ? 'Resume' : 'Close'}</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function ButtonLayoutBar({ field, onReset, onDone }: { field: Field; onReset: () => void; onDone: () => void }) {
+  return (
+    <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.editor, { top: field.top + 8 }]}>
+      <Text style={styles.editorTitle}>Button layout</Text>
+      <Text style={styles.menuBody}>Drag the fire button, ability slots, and the joystick when it is on.</Text>
+      <Pressable accessibilityRole="button" onPress={onReset} style={styles.menuButton}>
+        <Text style={styles.menuButtonText}>Reset layout</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={onDone} style={styles.menuPrimary}>
+        <Text style={styles.menuPrimaryText}>Done</Text>
+      </Pressable>
     </View>
   );
 }
@@ -757,59 +776,6 @@ function VolumeRow({
 
 function roundTenth(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function PowerGlyph({ kind }: { kind: PowerKind }) {
-  if (kind === 'rapid') {
-    return (
-      <View style={styles.glyph}>
-        <View style={[styles.streak, { transform: [{ rotate: '-24deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '-8deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '8deg' }] }]} />
-        <View style={[styles.streak, { transform: [{ rotate: '24deg' }] }]} />
-      </View>
-    );
-  }
-  if (kind === 'bomb') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.stemShade} />
-        <View style={styles.stemHot} />
-        <View style={styles.lobeL} />
-        <View style={styles.lobeR} />
-        <View style={styles.lobeC} />
-        <View style={styles.lobeHot} />
-        <View style={styles.ash} />
-      </View>
-    );
-  }
-  if (kind === 'laser') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.beam} />
-      </View>
-    );
-  }
-  if (kind === 'shield') {
-    return (
-      <View style={styles.glyph}>
-        <View style={styles.shieldBubble} />
-      </View>
-    );
-  }
-  if (kind === 'wingman') {
-    return (
-      <View style={styles.glyph}>
-        <View style={[styles.drone, { left: 4 }]} />
-        <View style={[styles.drone, { right: 4 }]} />
-      </View>
-    );
-  }
-  return (
-    <View style={styles.glyph}>
-      <View style={styles.warpRing} />
-    </View>
-  );
 }
 
 function formatScore(value: number): string {
@@ -924,84 +890,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   slot: {
-    backgroundColor: 'rgba(8, 14, 28, 0.88)',
-    borderWidth: 2,
-    borderColor: 'rgba(232, 244, 255, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glyph: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  streak: {
-    position: 'absolute',
-    width: 3,
-    height: 14,
-    borderRadius: 2,
-    backgroundColor: '#F4FEFF',
-    top: 2,
-  },
-  stemShade: {
-    position: 'absolute',
-    top: 12,
-    width: 8,
-    height: 13,
-    borderRadius: 3,
-    backgroundColor: '#4A342C',
-  },
-  stemHot: {
-    position: 'absolute',
-    top: 13,
-    width: 3,
-    height: 11,
-    borderRadius: 2,
-    backgroundColor: '#E25820',
-  },
-  lobeL: {
-    position: 'absolute',
-    top: 6,
-    left: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#6A3424',
-  },
-  lobeR: {
-    position: 'absolute',
-    top: 7,
-    right: 2,
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: '#8A3A22',
-  },
-  lobeC: {
-    position: 'absolute',
-    top: 2,
-    width: 14,
-    height: 12,
-    borderRadius: 7,
-    backgroundColor: '#D04A1C',
-  },
-  lobeHot: {
-    position: 'absolute',
-    top: 3,
-    width: 7,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#FFE0A4',
-  },
-  ash: {
-    position: 'absolute',
-    top: 5,
-    left: 1,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2A1C18',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   sectorName: {
     color: '#E7F6FF',
@@ -1048,35 +940,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     textAlign: 'center',
-  },
-  shieldBubble: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#9DEBFF',
-    backgroundColor: 'rgba(157,235,255,0.2)',
-  },
-  drone: {
-    position: 'absolute',
-    top: 8,
-    width: 7,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: '#E7F3FF',
-  },
-  warpRing: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#C9D4FF',
-  },
-  beam: {
-    width: 7,
-    height: 22,
-    borderRadius: 4,
-    backgroundColor: '#FF5A2A',
   },
   life: {
     fontWeight: '700',
@@ -1324,6 +1187,37 @@ const styles = StyleSheet.create({
     height: '42%',
     borderRadius: 3,
     backgroundColor: '#FFF6C8',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  toggle: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(126, 240, 255, 0.45)',
+    backgroundColor: 'rgba(8, 14, 28, 0.8)',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  toggleOn: {
+    backgroundColor: '#7EF0FF',
+    borderColor: '#7EF0FF',
+  },
+  toggleKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#9BB0C9',
+  },
+  toggleKnobOn: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#071018',
   },
   schemeLabel: {
     color: '#E7F7FF',

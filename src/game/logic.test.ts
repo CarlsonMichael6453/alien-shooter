@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO, STICK_SPEED } from './constants';
-import { createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
+import { chooseMissileTarget, createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
 import { createRng } from './rng';
 
 function playing(width = 400, height = 800) {
@@ -366,6 +366,32 @@ describe('simulation', () => {
     assert.ok(state.sectorBanner > 1);
     assert.equal(state.pickups.length, 1);
     assert.notEqual(state.pickups[0].kind, 'ammo');
+  });
+
+  it('launches a homing missile swarm that prefers the closer threat and hits for 8', () => {
+    const state = playing();
+    const near = makeEnemy({ id: 1, x: state.shipX + 40, y: state.shipY - 220, r: 24, hp: 15, maxHp: 15, shape: 'cruiser', score: 200 });
+    const far = makeEnemy({ id: 2, x: 24, y: 40, r: 14, hp: 5, maxHp: 5, shape: 'dart', score: 50 });
+    state.enemies.push(near, far);
+    assert.equal(chooseMissileTarget(state)?.id, near.id);
+    state.inventory = ['missiles'];
+    step(state, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.deepEqual(state.inventory, []);
+    assert.equal(state.missileLeft, 19);
+    assert.equal(state.missiles[0].targetId, near.id);
+    state.missiles[0].angle = -Math.PI / 2;
+    state.missileCooldown = 5;
+    step(state, idleIntent(), 0.2);
+    assert.ok(state.missiles[0].angle > -Math.PI / 2 + 0.05);
+    state.missiles[0].x = near.x;
+    state.missiles[0].y = near.y + 10;
+    state.missiles[0].angle = -Math.PI / 2;
+    step(state, idleIntent(), 0.05);
+    assert.equal(state.enemies.find((enemy) => enemy.id === near.id)?.hp, 7);
+    state.enemies = state.enemies.filter((enemy) => enemy.id === far.id);
+    state.missiles = [{ x: far.x + 80, y: far.y, angle: -Math.PI / 2, targetId: 99, boss: false, smoke: 1 }];
+    step(state, idleIntent(), 0.05);
+    assert.equal(state.missiles[0]?.targetId, far.id);
   });
 });
 
