@@ -48,7 +48,7 @@ describe('tutorial prompts', () => {
     const learned: TutorialProgress = { moved: true, fired: false, power: false };
     const session: TutorialSession = { ...freshSession(), inRun: true, shipMoved: true, anchorX: 180, anchorY: 640 };
     const shooting = advanceTutorial(learned, session, field({ shotsFired: 1, shotsBefore: 0 }));
-    assert.equal(shooting.cue, null);
+    assert.equal(shooting.cue, 'pickup');
     assert.equal(shooting.progress.fired, true);
 
     const holding = advanceTutorial(shooting.progress, shooting.session, field({ inventory: 1, inventoryBefore: 0, shotsFired: 1 }));

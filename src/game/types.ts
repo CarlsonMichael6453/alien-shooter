@@ -162,6 +162,13 @@ export interface GameState {
   /** Score at which the next boss arrives. */
   bossScore: number;
   sectorBanner: number;
+  /** 1-based endless wave. A boss arrives every third wave. */
+  wave: number;
+  waveSpawned: number;
+  /** Seconds left before the next wave. */
+  waveBreak: number;
+  /** Visual only. Hit size and weapons stay the same for every ship. */
+  shipId: string;
   spark: number;
   /** When true the simulation is frozen so a frame can be inspected. */
   hold: boolean;

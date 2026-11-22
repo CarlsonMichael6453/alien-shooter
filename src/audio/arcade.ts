@@ -8,9 +8,10 @@ export interface AudioSettings {
   sfx: number;
   musicOn: boolean;
   sfxOn: boolean;
+  vibrate: boolean;
 }
 
-export const DEFAULT_AUDIO: AudioSettings = { music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true };
+export const DEFAULT_AUDIO: AudioSettings = { music: 0.7, sfx: 0.85, musicOn: true, sfxOn: true, vibrate: true };
 const AUDIO_KEY = 'alien-shooter:audio';
 
 export function parseAudioSettings(raw: string | null): AudioSettings {
@@ -23,6 +24,7 @@ export function parseAudioSettings(raw: string | null): AudioSettings {
       sfx: clamp01(typeof value.sfx === 'number' ? value.sfx : DEFAULT_AUDIO.sfx),
       musicOn: value.musicOn !== false,
       sfxOn: value.sfxOn !== false,
+      vibrate: value.vibrate !== false,
     };
   } catch {
     return { ...DEFAULT_AUDIO };
@@ -70,6 +72,7 @@ class ArcadeAudio {
       sfx: clamp01(next.sfx),
       musicOn: next.musicOn,
       sfxOn: next.sfxOn,
+      vibrate: next.vibrate,
     };
     this.pushGains();
   }
