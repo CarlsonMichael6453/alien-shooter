@@ -54,7 +54,8 @@ export function bindControls(
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
       const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
-      const slot = slotIndex(touch.target) ?? (event.changedTouches.length === 1 ? slotIndex(event.target) : null);
+      const onFire = controls.fireId === touch.identifier || controls.onFireButton(point.x, point.y);
+      const slot = onFire ? null : (slotIndex(touch.target) ?? (event.changedTouches.length === 1 ? slotIndex(event.target) : null));
       if (slot != null) controls.claimPower(touch.identifier, slot);
       const target = touch.target ?? event.target;
       const onUi = uiNode(target);
@@ -97,7 +98,7 @@ export function bindControls(
     if (isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
     const ship = getShip();
-    const slot = slotIndex(event.target);
+    const slot = controls.onFireButton(point.x, point.y) ? null : slotIndex(event.target);
     if (slot != null) {
       controls.claimPower(event.button === 0 ? -1 : -2, slot);
       if (event.cancelable) event.preventDefault();

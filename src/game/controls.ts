@@ -106,14 +106,18 @@ export class Controls {
   }
 
   /**
-   * The finger landed on an ability icon. Drop any fire or drag claim that
-   * same finger picked up, and arm that slot. iOS can report the icon as the
-   * touch target even when the point falls in the fire button.
+   * The finger landed on an ability icon. Release a drag claim from that same
+   * finger and arm the slot. A finger already on the fire button stays there.
    */
   claimPower(id: number, slot: number): void {
     if (!Number.isInteger(slot) || slot < 0 || slot > 2) return;
+    if (this.fireId === id) return;
     this.pointerUp(id);
     this.powerRequest = slot;
+  }
+
+  onFireButton(x: number, y: number): boolean {
+    return this.inside(this.fireRect, x, y);
   }
 
   consumeChrome(): boolean {
@@ -363,18 +367,26 @@ export class Controls {
   }
 
   private hitsInventory(x: number, y: number): number {
+    if (this.inside(this.fireRect, x, y)) return -1;
+    let best = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
     for (let index = 0; index < this.inventoryRects.length; index += 1) {
       const rect = this.inventoryRects[index];
-      if (
+      const near =
         x >= rect.x - SLOT_HIT_SLOP &&
         y >= rect.y - SLOT_HIT_SLOP &&
         x <= rect.x + rect.w + SLOT_HIT_SLOP &&
-        y <= rect.y + rect.h + SLOT_HIT_SLOP
-      ) {
-        return index;
+        y <= rect.y + rect.h + SLOT_HIT_SLOP;
+      if (!near) continue;
+      const dx = x - (rect.x + rect.w / 2);
+      const dy = y - (rect.y + rect.h / 2);
+      const distance = dx * dx + dy * dy;
+      if (distance < bestDistance) {
+        best = index;
+        bestDistance = distance;
       }
     }
-    return -1;
+    return best;
   }
 
   private hitsChrome(x: number, y: number): boolean {

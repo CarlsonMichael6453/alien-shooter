@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DRAG_FOLLOW } from './constants';
-import { Controls, SLOT_HIT_SLOP, STICK_DEAD_ZONE, stickResponse } from './controls';
+import { Controls, STICK_DEAD_ZONE, stickResponse } from './controls';
 
 describe('two-finger controls', () => {
   it('treats the first touch as move and the second as fire', () => {
@@ -123,36 +123,57 @@ describe('two-finger controls', () => {
     assert.equal(controls.frame().firing, false);
   });
 
-  it('keeps a tap in the slop under an ability slot from firing or dragging', () => {
+  it('keeps the fire button when an ability slot reaches into it', () => {
     const controls = new Controls();
     controls.setScheme('drag');
     const slot = { x: 334, y: 666, w: 46, h: 46 };
+    const fire = { x: 300, y: slot.y + slot.h + 8, w: 80, h: 80 };
     controls.setInventoryRects([
       { x: 230, y: 666, w: 46, h: 46 },
       slot,
       { x: 386, y: 666, w: 46, h: 46 },
     ]);
-    controls.setActionRects(null, { x: 300, y: slot.y + slot.h + 8, w: 80, h: 80 });
-    const x = slot.x + slot.w / 2;
-    const y = slot.y + slot.h + SLOT_HIT_SLOP;
-    assert.equal(controls.pointerDown(4, x, y, 100, 100), 'power');
+    controls.setActionRects(null, fire);
+    const onButton = controls.pointerDown(4, fire.x + fire.w / 2, fire.y + 4, 100, 400);
+    assert.equal(onButton, 'play');
+    assert.equal(controls.fireId, 4);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.consumePower(), null);
+    assert.equal(controls.frame().firing, true);
+    controls.pointerUp(4);
+
+    const gap = controls.pointerDown(5, slot.x + slot.w / 2, slot.y + slot.h + 4, 100, 400);
+    assert.equal(gap, 'power');
     assert.equal(controls.fireId, null);
     assert.equal(controls.moveId, null);
     assert.equal(controls.consumePower(), 1);
+
+    const icon = controls.pointerDown(6, slot.x + 4, slot.y + 4, 100, 400);
+    assert.equal(icon, 'power');
+    assert.equal(controls.consumePower(), 1);
   });
 
-  it('takes a finger back from the fire button when the icon is the touch target', () => {
+  it('fires while a finger drags, and a slot tap does not release the trigger', () => {
     const controls = new Controls();
     controls.setScheme('drag');
-    controls.setActionRects(null, { x: 300, y: 720, w: 80, h: 80 });
-    assert.equal(controls.pointerDown(4, 340, 760, 100, 100), 'play');
-    assert.equal(controls.fireId, 4);
-    controls.claimPower(4, 2);
-    assert.equal(controls.fireId, null);
-    assert.equal(controls.moveId, null);
-    assert.equal(controls.frame().firing, false);
-    assert.equal(controls.consumePower(), 2);
-    controls.claimPower(5, 9);
+    const slot = { x: 334, y: 666, w: 46, h: 46 };
+    const fire = { x: 300, y: 740, w: 80, h: 80 };
+    controls.setInventoryRects([slot]);
+    controls.setActionRects(null, fire);
+    assert.equal(controls.pointerDown(1, 40, 500, 180, 600), 'play');
+    controls.pointerMove(1, 70, 540);
+    assert.equal(controls.pointerDown(2, fire.x + 20, fire.y + 20, 180, 600), 'play');
+    const frame = controls.frame();
+    assert.equal(frame.firing, true);
+    assert.equal(frame.moveActive, true);
+    assert.equal(controls.pointerDown(3, slot.x + 10, slot.y + 10, 180, 600), 'power');
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.moveId, 1);
+    assert.equal(controls.frame().firing, true);
+    controls.claimPower(2, 0);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.frame().firing, true);
     assert.equal(controls.consumePower(), null);
   });
 

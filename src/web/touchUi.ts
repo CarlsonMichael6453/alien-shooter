@@ -11,13 +11,13 @@ export function classifyTouch(
   claimedFire = false,
   claimedPower = false,
 ): { play: boolean; cancel: boolean; dropPlayPointer: boolean } {
-  // iOS Safari can hit-test an ability glyph and report that node as a menu
-  // control. The slot still wins: keep the activation and cancel the click.
-  if (claimedPower || role === 'power') return { play: false, cancel: true, dropPlayPointer: false };
-  if (role === 'chrome') return { play: false, cancel: !targetIsUi, dropPlayPointer: false };
   // iOS Safari can hit-test the fire graphic even though it is pointer-events: none.
   // That graphic sits inside a HUD node, so a plain UI check would drop the finger.
+  // The fire button also wins when a nearby ability icon is reported as the target.
   if (claimedFire) return { play: true, cancel: true, dropPlayPointer: false };
+  // An ability glyph can be reported as a menu control. Keep the slot tap.
+  if (claimedPower || role === 'power') return { play: false, cancel: true, dropPlayPointer: false };
+  if (role === 'chrome') return { play: false, cancel: !targetIsUi, dropPlayPointer: false };
   if (targetIsUi) return { play: false, cancel: false, dropPlayPointer: true };
   return { play: true, cancel: true, dropPlayPointer: false };
 }
