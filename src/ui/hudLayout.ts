@@ -213,22 +213,43 @@ export function patchElement(layout: HudLayout, id: HudElementId, patch: Partial
   };
 }
 
-export function inventoryRects(element: HudElement, field: Field, count: number, offsetX: number): HudRect[] {
-  if (!element.visible || count <= 0) return [];
-  const placed = clampElement(element, field, count);
+const INVENTORY_ANCHOR = 3;
+
+/**
+ * Visible ability icons sit in the rightmost cells of the 3-slot row, so one
+ * owned power is the cell stacked on the fire button. The saved layout still
+ * stores the left edge of that full row.
+ */
+export function inventoryOrigin(element: HudElement, field: Field, count: number): { x: number; y: number; slot: number; gap: number; w: number; h: number } {
+  const shown = Math.max(0, Math.min(INVENTORY_ANCHOR, count));
+  const placed = clampElement(element, field, INVENTORY_ANCHOR);
   const slot = SLOT_SIZE * placed.scale;
   const gap = SLOT_GAP * placed.scale;
-  const left = placed.x * field.width + offsetX;
-  const top = placed.y * field.height;
-  return Array.from({ length: Math.min(3, count) }, (_, index) => ({
-    x: left + index * (slot + gap),
-    y: top,
-    w: slot,
-    h: slot,
+  const anchorWidth = elementSize('inventory', placed.scale, INVENTORY_ANCHOR).w;
+  const used = elementSize('inventory', placed.scale, Math.max(1, shown)).w;
+  const shift = shown === 0 ? 0 : anchorWidth - used;
+  const minX = EDGE;
+  const maxX = Math.max(minX, field.width - EDGE - used);
+  const left = Math.min(maxX, Math.max(minX, placed.x * field.width + shift));
+  return { x: left, y: placed.y * field.height, slot, gap, w: used, h: slot };
+}
+
+export function inventoryRects(element: HudElement, field: Field, count: number, offsetX: number): HudRect[] {
+  if (!element.visible || count <= 0) return [];
+  const origin = inventoryOrigin(element, field, count);
+  return Array.from({ length: Math.min(INVENTORY_ANCHOR, count) }, (_, index) => ({
+    x: origin.x + offsetX + index * (origin.slot + origin.gap),
+    y: origin.y,
+    w: origin.slot,
+    h: origin.slot,
   }));
 }
 
 export function elementBounds(element: HudElement, field: Field, inventoryCount: number): HudRect {
+  if (element.id === 'inventory') {
+    const origin = inventoryOrigin(element, field, Math.max(1, inventoryCount));
+    return { x: origin.x, y: origin.y, w: origin.w, h: origin.h };
+  }
   const placed = clampElement(element, field, inventoryCount);
   const size = elementSize(element.id, placed.scale, inventoryCount);
   return { x: placed.x * field.width, y: placed.y * field.height, w: size.w, h: size.h };

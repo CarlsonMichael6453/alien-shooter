@@ -9,8 +9,12 @@ export function classifyTouch(
   targetIsUi: boolean,
   role: PointerRole,
   claimedFire = false,
+  claimedPower = false,
 ): { play: boolean; cancel: boolean; dropPlayPointer: boolean } {
-  if (role === 'chrome' || role === 'power') return { play: false, cancel: !targetIsUi, dropPlayPointer: false };
+  // iOS Safari can hit-test an ability glyph and report that node as a menu
+  // control. The slot still wins: keep the activation and cancel the click.
+  if (claimedPower || role === 'power') return { play: false, cancel: true, dropPlayPointer: false };
+  if (role === 'chrome') return { play: false, cancel: !targetIsUi, dropPlayPointer: false };
   // iOS Safari can hit-test the fire graphic even though it is pointer-events: none.
   // That graphic sits inside a HUD node, so a plain UI check would drop the finger.
   if (claimedFire) return { play: true, cancel: true, dropPlayPointer: false };

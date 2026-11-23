@@ -94,6 +94,11 @@ function markUi(node: unknown): void {
   element?.setAttribute?.('data-alien-ui', '1');
 }
 
+function markSlot(node: unknown, index: number): void {
+  const element = node as { setAttribute?: (name: string, value: string) => void } | null;
+  element?.setAttribute?.('data-alien-slot', String(index));
+}
+
 export function Overlay({
   model,
   layout,
@@ -477,6 +482,8 @@ function ElementBody({
       {slots.map((kind, index) => (
         <View
           key={`${kind}-${index}`}
+          ref={(node) => markSlot(node, index)}
+          collapsable={false}
           style={[
             styles.slot,
             {
