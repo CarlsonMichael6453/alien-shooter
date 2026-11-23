@@ -32,7 +32,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx --test src/game/abilityArt.test.ts src/game/laserAim.test.ts src/game/waves.test.ts src/game/controls.test.ts src/game/logic.test.ts src/game/sectors.test.ts src/ui/tutorial.test.ts src/ui/laserHint.test.ts src/ui/hudLayout.test.ts src/ui/profile.test.ts src/web/touchUi.test.ts src/feedback/mailto.test.ts src/feedback/ratingPrompt.test.ts src/audio/arcade.test.ts",
+    "test": "tsx --test src/game/abilityArt.test.ts src/game/laserAim.test.ts src/game/premium.test.ts src/game/waves.test.ts src/game/controls.test.ts src/game/logic.test.ts src/game/sectors.test.ts src/ui/tutorial.test.ts src/ui/laserHint.test.ts src/ui/hudLayout.test.ts src/ui/profile.test.ts src/web/touchUi.test.ts src/feedback/mailto.test.ts src/feedback/ratingPrompt.test.ts src/audio/arcade.test.ts",
     "store:shots": "node scripts/store-shots.cjs",
     "test:gear": "node scripts/gear-touch-check.cjs",
     "typecheck": "tsc --noEmit",

@@ -1,4 +1,5 @@
 import type { Kv } from './kv';
+import { EMPTY_ENTITLEMENTS, type Entitlements } from '../game/premium';
 import { DEFAULT_SHIP, SHIPS, shipUnlocked } from '../game/ships';
 
 export const PROFILE_KEY = 'alien-shooter:profile';
@@ -62,10 +63,17 @@ export function recordRun(profile: Profile, score: number, wave: number, at: num
   };
 }
 
-export function selectShip(profile: Profile, shipId: string): Profile {
+export function selectShip(profile: Profile, shipId: string, entitlements: Entitlements = EMPTY_ENTITLEMENTS): Profile {
   const ship = SHIPS.find((item) => item.id === shipId);
-  if (!ship || !shipUnlocked(ship, profile.bestScore, profile.bestWave)) return profile;
+  if (!ship || !shipUnlocked(ship, profile.bestScore, profile.bestWave, entitlements)) return profile;
   return { ...profile, shipId };
+}
+
+/** A saved premium ship stays selected only while the player still owns it. */
+export function playableShipId(profile: Profile, entitlements: Entitlements = EMPTY_ENTITLEMENTS): string {
+  const ship = SHIPS.find((item) => item.id === profile.shipId);
+  if (ship && shipUnlocked(ship, profile.bestScore, profile.bestWave, entitlements)) return ship.id;
+  return DEFAULT_SHIP;
 }
 
 export async function loadProfile(store: Kv): Promise<Profile> {

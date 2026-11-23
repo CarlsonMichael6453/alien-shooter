@@ -21,7 +21,8 @@ import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
 import { pulseHaptic } from './haptics';
 import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
-import { FRESH_PROFILE, loadProfile, recordRun, saveProfile, selectShip, type Profile } from './profile';
+import { EMPTY_ENTITLEMENTS, devUnlockAllFromLocation, type Entitlements } from '../game/premium';
+import { FRESH_PROFILE, loadProfile, playableShipId, recordRun, saveProfile, selectShip, type Profile } from './profile';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
@@ -167,6 +168,9 @@ export function GameScreen() {
   const [ui, setUi] = useState<UiMode>('none');
   const [profile, setProfile] = useState<Profile>(FRESH_PROFILE);
   const profileRef = useRef<Profile>(FRESH_PROFILE);
+  const [entitlements, setEntitlements] = useState<Entitlements>(EMPTY_ENTITLEMENTS);
+  const entitlementsRef = useRef<Entitlements>(EMPTY_ENTITLEMENTS);
+  entitlementsRef.current = entitlements;
   const returnRef = useRef<UiMode>('none');
   const [selected, setSelected] = useState<HudElementId>('score');
   const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null, deaths: 0 });
@@ -197,6 +201,11 @@ export function GameScreen() {
 
   useEffect(() => {
     if (Platform.OS === 'web') audio.installUnlock();
+    if (Platform.OS === 'web' && devUnlockAllFromLocation(globalThis.location?.search ?? '')) {
+      const next = { owned: [], unlockAll: true };
+      entitlementsRef.current = next;
+      setEntitlements(next);
+    }
   }, []);
 
   useEffect(() => {
@@ -269,10 +278,13 @@ export function GameScreen() {
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
-      profileRef.current = savedProfile;
-      setProfile(savedProfile);
+      const playable = playableShipId(savedProfile, entitlementsRef.current);
+      const ready = playable === savedProfile.shipId ? savedProfile : { ...savedProfile, shipId: playable };
+      profileRef.current = ready;
+      setProfile(ready);
+      if (playable !== savedProfile.shipId) void saveProfile(store, ready);
       if (stateRef.current) {
-        stateRef.current.shipId = savedProfile.shipId;
+        stateRef.current.shipId = ready.shipId;
         stateRef.current.best = Math.max(stateRef.current.best, savedProfile.bestScore);
       }
       setAudioUi(audioSettings);
@@ -601,6 +613,7 @@ export function GameScreen() {
             }}
             onResetLayout={() => commitLayout(defaultLayout(field), true)}
             profile={profile}
+            entitlements={entitlements}
             onPlay={() => {
               startRef.current = true;
               if (Platform.OS === 'web') {
@@ -624,7 +637,7 @@ export function GameScreen() {
             onOpenPrivacy={() => openUi('privacy', 'none')}
             closeLabel={returnRef.current === 'pause' ? 'Back' : hud.mode === 'playing' ? 'Resume' : 'Close'}
             onSelectShip={(id) => {
-              const next = selectShip(profileRef.current, id);
+              const next = selectShip(profileRef.current, id, entitlementsRef.current);
               profileRef.current = next;
               setProfile(next);
               if (stateRef.current) stateRef.current.shipId = next.shipId;

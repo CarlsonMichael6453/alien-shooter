@@ -18,6 +18,7 @@ import type { ControlScheme } from './controlsMode';
 import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 import { MainMenu, PauseMenu, PrivacyPage, ScoreBoard, ShipSelect } from './Menus';
+import type { Entitlements } from '../game/premium';
 import type { Profile } from './profile';
 import { markFireZone, markLaserZone } from '../web/bindControls';
 
@@ -82,6 +83,7 @@ interface Props {
   scheme: ControlScheme;
   onScheme: (scheme: ControlScheme) => void;
   profile: Profile;
+  entitlements: Entitlements;
   onPlay: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -135,6 +137,7 @@ export function Overlay({
   scheme,
   onScheme,
   profile,
+  entitlements,
   onPlay,
   onPause,
   onResume,
@@ -222,7 +225,7 @@ export function Overlay({
       {ui === 'none' && model.mode !== 'ready' ? <GearButton rect={gear} onPress={onOpenSettings} /> : null}
       {ui === 'pause' ? <PauseMenu onResume={onResume} onSettings={onOpenSettings} onQuit={onQuit} /> : null}
       {ui === 'scores' ? <ScoreBoard profile={profile} onClose={onCloseUi} /> : null}
-      {ui === 'ships' ? <ShipSelect profile={profile} onSelect={onSelectShip} onClose={onCloseUi} /> : null}
+      {ui === 'ships' ? <ShipSelect profile={profile} entitlements={entitlements} onSelect={onSelectShip} onClose={onCloseUi} /> : null}
       {ui === 'privacy' ? <PrivacyPage onClose={onCloseUi} /> : null}
       {ui === 'settings' ? (
         <SettingsMenu

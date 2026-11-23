@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SHIPS, shipUnlocked } from '../game/ships';
+import { BUNDLE_NAME, BUNDLE_PRICE_LABEL, PREMIUM_PRODUCTS, purchaseProduct, type Entitlements } from '../game/premium';
+import { SHIPS, shipUnlocked, type ShipStyle } from '../game/ships';
 import type { Profile } from './profile';
 
 function markUi(node: unknown): void {
@@ -115,25 +117,49 @@ function ShipPreview({ shipId, wing, hull }: { shipId: string; wing: string; hul
   );
 }
 
-export function ShipSelect({ profile, onSelect, onClose }: { profile: Profile; onSelect: (id: string) => void; onClose: () => void }) {
+export function ShipSelect({
+  profile,
+  entitlements,
+  onSelect,
+  onClose,
+}: {
+  profile: Profile;
+  entitlements: Entitlements;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [offer, setOffer] = useState<ShipStyle | 'bundle' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const offerShip = offer && offer !== 'bundle' ? offer : SHIPS.find((ship) => ship.id === 'superpink')!;
   return (
     <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.wrap, styles.scrim]}>
       <View style={styles.card}>
         <Text style={styles.kicker}>SAME HANDLING</Text>
         <Text style={styles.menuTitle}>SHIPS</Text>
-        <Text style={styles.body}>Every ship handles the same. SuperPink, Festive, and MegaDark also restyle shots and power-ups.</Text>
+        <Text style={styles.body}>Same handling. SuperPink, Festive, and MegaDark are optional. This game has no ads.</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`All three ${BUNDLE_PRICE_LABEL}`} onPress={() => { setNotice(null); setOffer('bundle'); }} style={styles.bundle}>
+          <Text style={styles.bundleName}>{BUNDLE_NAME}</Text>
+          <Text style={styles.bundlePrice}>{BUNDLE_PRICE_LABEL}</Text>
+        </Pressable>
         <ScrollView style={styles.list}>
           {SHIPS.map((ship) => {
-            const open = shipUnlocked(ship, profile.bestScore, profile.bestWave);
+            const open = shipUnlocked(ship, profile.bestScore, profile.bestWave, entitlements);
             const selected = profile.shipId === ship.id;
-            const need = ship.score === 0 ? 'Ready' : `Score ${ship.score.toLocaleString('en-US')} or wave ${ship.wave}`;
+            const need = ship.premium ? 'Premium' : ship.score === 0 ? 'Ready' : `Score ${ship.score.toLocaleString('en-US')} or wave ${ship.wave}`;
             return (
               <Pressable
                 key={ship.id}
                 accessibilityRole="button"
-                accessibilityState={{ selected, disabled: !open }}
-                disabled={!open}
-                onPress={() => onSelect(ship.id)}
+                accessibilityLabel={ship.premium && !open ? `${ship.name} ${ship.priceLabel}` : ship.name}
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  if (ship.premium && !open) {
+                    setNotice(null);
+                    setOffer(ship);
+                    return;
+                  }
+                  if (open) onSelect(ship.id);
+                }}
                 style={[styles.ship, selected ? styles.shipOn : null, open ? null : styles.shipLocked]}
               >
                 <ShipPreview shipId={ship.id} wing={ship.wing} hull={ship.hull} />
@@ -141,6 +167,12 @@ export function ShipSelect({ profile, onSelect, onClose }: { profile: Profile; o
                   <Text style={styles.shipName}>{ship.name}</Text>
                   <Text style={styles.shipNeed}>{!open ? need : selected ? 'Selected' : 'Unlocked'}</Text>
                 </View>
+                {ship.premium && !open ? (
+                  <View style={styles.priceTag}>
+                    <LockMark />
+                    <Text style={styles.priceText}>{ship.priceLabel}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
@@ -149,6 +181,50 @@ export function ShipSelect({ profile, onSelect, onClose }: { profile: Profile; o
           <Text style={styles.primaryText}>CLOSE</Text>
         </Pressable>
       </View>
+      {offer ? (
+        <View style={styles.sheetScrim}>
+          <View style={styles.sheet}>
+            {offer === 'bundle' ? (
+              <View style={styles.bundleRow}>
+                {SHIPS.filter((ship) => ship.premium).map((ship) => (
+                  <ShipPreview key={ship.id} shipId={ship.id} wing={ship.wing} hull={ship.hull} />
+                ))}
+              </View>
+            ) : (
+              <ShipPreview shipId={offerShip.id} wing={offerShip.wing} hull={offerShip.hull} />
+            )}
+            <Text style={styles.sheetTitle}>{offer === 'bundle' ? BUNDLE_NAME : offerShip.name}</Text>
+            <Text style={styles.body}>{offer === 'bundle' ? 'SuperPink, Festive, and MegaDark.' : 'Same handling. This theme restyles shots and power-ups.'}</Text>
+            <Text style={styles.sheetPrice}>{offer === 'bundle' ? BUNDLE_PRICE_LABEL : offerShip.priceLabel}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buy"
+              onPress={() => setNotice(purchaseProduct(offer === 'bundle' ? PREMIUM_PRODUCTS.bundle : offerShip.productId ?? PREMIUM_PRODUCTS.bundle).message)}
+              style={styles.primary}
+            >
+              <Text style={styles.primaryText}>Buy {offer === 'bundle' ? BUNDLE_PRICE_LABEL : offerShip.priceLabel}</Text>
+            </Pressable>
+            {offer !== 'bundle' ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Bundle" onPress={() => setNotice(purchaseProduct(PREMIUM_PRODUCTS.bundle).message)} style={styles.button}>
+                <Text style={styles.buttonText}>Bundle {BUNDLE_PRICE_LABEL}</Text>
+              </Pressable>
+            ) : null}
+            {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+            <Pressable accessibilityRole="button" onPress={() => setOffer(null)} style={styles.button}>
+              <Text style={styles.buttonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function LockMark() {
+  return (
+    <View style={styles.lock}>
+      <View style={styles.lockShackle} />
+      <View style={styles.lockBody} />
     </View>
   );
 }
@@ -161,7 +237,7 @@ export function PrivacyPage({ onClose }: { onClose: () => void }) {
         <Text style={styles.menuTitle}>PRIVACY</Text>
         <ScrollView style={styles.list}>
           <Text style={styles.body}>
-            This game stores scores, the selected ship, controls, tutorial progress, and sound settings on this device only. It does not create an account, sell data, or use advertising or analytics.
+            This game stores scores, the selected ship, controls, tutorial progress, and sound settings on this device only. It does not create an account, sell data, show ads, or send analytics. Monetization is optional premium ships only. There is no product that removes ads.
           </Text>
           <Text style={styles.body}>
             Feedback opens your mail app. That message leaves the device only if you send it. Vibration, if you leave it on, stays on the phone.
@@ -344,5 +420,93 @@ const styles = StyleSheet.create({
     color: '#9BB0C9',
     fontSize: 12,
     marginTop: 2,
+  },
+  priceTag: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  priceText: {
+    color: '#FFE7A0',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  lock: {
+    width: 14,
+    height: 12,
+    alignItems: 'center',
+  },
+  lockShackle: {
+    width: 8,
+    height: 5,
+    borderWidth: 1.5,
+    borderColor: '#F4FBFF',
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  lockBody: {
+    width: 12,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: '#F4FBFF',
+    marginTop: -1,
+  },
+  bundle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 231, 160, 0.55)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255, 231, 160, 0.08)',
+  },
+  bundleName: {
+    color: '#FFE7A0',
+    fontWeight: '800',
+  },
+  bundlePrice: {
+    color: '#FFF6D8',
+    fontWeight: '800',
+  },
+  bundleRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  sheetScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(4, 8, 16, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+  },
+  sheet: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 244, 255, 0.24)',
+    backgroundColor: '#101826',
+    padding: 18,
+    alignItems: 'center',
+  },
+  sheetTitle: {
+    color: '#F4FBFF',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  sheetPrice: {
+    color: '#FFE7A0',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  notice: {
+    color: '#9BB0C9',
+    marginTop: 8,
+    fontWeight: '700',
   },
 });

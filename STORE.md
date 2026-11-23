@@ -1,5 +1,9 @@
 # Store prep
 
+This game has no ads. Do not add an ad SDK, an ad placeholder, or a product that removes ads. Monetization is optional premium ships only: SuperPink, Festive, and MegaDark at $1.99 each, or all three for $3.99. Purchases are not connected yet.
+
+
+
 The native listing is not final. Placeholders are in `app.config.ts` and `eas.json`. The public site is published from `main`.
 
 ## Still needed before a store submit
