@@ -153,6 +153,22 @@ describe('two-finger controls', () => {
     assert.equal(controls.consumePower(), 1);
   });
 
+  it('claims the fire hit zone even if that finger was first seen as a drag', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    controls.setActionRects(null, { x: 300, y: 500, w: 80, h: 80 });
+    controls.setInventoryRects([{ x: 334, y: 440, w: 46, h: 46 }]);
+    assert.equal(controls.pointerDown(4, 20, 200, 100, 300), 'play');
+    controls.claimFire(4, 340, 540, 100, 300);
+    assert.equal(controls.fireId, 4);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.frame().firing, true);
+    controls.pointerDown(5, 350, 450, 100, 300);
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.fireId, 4);
+    assert.equal(controls.frame().firing, true);
+  });
+
   it('fires while a finger drags, and a slot tap does not release the trigger', () => {
     const controls = new Controls();
     controls.setScheme('drag');

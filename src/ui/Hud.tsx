@@ -18,6 +18,7 @@ import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 import { MainMenu, PauseMenu, PrivacyPage, ScoreBoard, ShipSelect } from './Menus';
 import type { Profile } from './profile';
+import { markFireZone } from '../web/bindControls';
 
 export interface HudModel {
   mode: Mode;
@@ -179,13 +180,14 @@ export function Overlay({
             );
           })
         : null}
+      {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
 
       {playing && ui === 'none' && cue ? (
         <TutorialPrompt cue={cue} field={field} finePointer={finePointer} inventory={inventory ?? null} count={Math.max(1, model.inventory.length)} scheme={scheme} />
       ) : null}
 
       {playing && ui === 'none' && model.hint && !cue ? (
-        <Text style={[styles.hint, { bottom: hintBottom(layout, field, model) }]}>{model.hint}</Text>
+        <Text pointerEvents="none" style={[styles.hint, { bottom: hintBottom(layout, field, model) }]}>{model.hint}</Text>
       ) : null}
 
       {model.mode === 'playing' && model.bossMax > 0 ? (
@@ -484,6 +486,7 @@ function ElementBody({
           key={`${kind}-${index}`}
           ref={(node) => markSlot(node, index)}
           collapsable={false}
+          pointerEvents="auto"
           style={[
             styles.slot,
             {
@@ -856,6 +859,21 @@ function VolumeRow({
   );
 }
 
+function FireCatcher({ layout, field }: { layout: HudLayout; field: Field }) {
+  const fire = layout.elements.find((element) => element.id === 'fire');
+  if (!fire?.visible) return null;
+  const bounds = elementBounds(fire, field, 1);
+  return (
+    <View
+      ref={markFireZone}
+      collapsable={false}
+      pointerEvents="auto"
+      accessibilityLabel="Fire button"
+      style={[styles.fireZone, { left: bounds.x, top: bounds.y, width: bounds.w, height: bounds.h }]}
+    />
+  );
+}
+
 function roundTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -875,6 +893,11 @@ const font = Platform.select({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
+  },
+  fireZone: {
+    position: 'absolute',
+    zIndex: 30,
+    backgroundColor: 'transparent',
   },
   piece: {
     position: 'absolute',
