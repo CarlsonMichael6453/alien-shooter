@@ -3,8 +3,10 @@ import { describe, it } from 'node:test';
 import { parseControlScheme } from './controlsMode';
 import { memoryStore } from './kv';
 import {
+  FIRE_BOTTOM_CLEARANCE,
   HUD_IDS,
   clampElement,
+  clampLayout,
   defaultLayout,
   elementBounds,
   gearRect,
@@ -114,9 +116,24 @@ describe('hud layout', () => {
     assert.ok(Math.abs(slots.x + slots.w - (fire.x + fire.w)) < 1);
     assert.ok(slots.y + slots.h <= fire.y + 0.5);
     const rightGap = phone.width - (fire.x + fire.w);
-    const aboveHome = phone.height - phone.bottom - (fire.y + fire.h);
+    const fromScreenBottom = phone.height - (fire.y + fire.h);
     assert.ok(rightGap >= 6 && rightGap <= 10, `right gap ${rightGap}`);
-    assert.ok(aboveHome >= 6 && aboveHome <= 10, `home gap ${aboveHome}`);
+    assert.ok(Math.abs(fromScreenBottom - FIRE_BOTTOM_CLEARANCE) < 1, `bottom gap ${fromScreenBottom}`);
+    const browser: Field = { width: 390, height: 664, top: 0, bottom: 0 };
+    const browserFire = elementBounds(defaultLayout(browser).elements.find((element) => element.id === 'fire')!, browser, 1);
+    assert.ok(browser.height - (browserFire.y + browserFire.h) >= FIRE_BOTTOM_CLEARANCE - 0.5);
+    const crowded = clampLayout(
+      {
+        elements: defaultLayout(browser).elements.map((element) =>
+          element.id === 'inventory' ? { ...element, y: (browserFire.y + 10) / browser.height } : element,
+        ),
+      },
+      browser,
+      1,
+    );
+    const lifted = elementBounds(crowded.layout.elements.find((element) => element.id === 'inventory')!, browser, 1);
+    const liftedFire = elementBounds(crowded.layout.elements.find((element) => element.id === 'fire')!, browser, 1);
+    assert.ok(lifted.y + lifted.h <= liftedFire.y + 0.5);
     const lone = inventoryRects(layout.elements.find((element) => element.id === 'inventory')!, phone, 1, 0);
     const loneBounds = elementBounds(layout.elements.find((element) => element.id === 'inventory')!, phone, 1);
     assert.equal(lone.length, 1);

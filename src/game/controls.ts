@@ -120,6 +120,28 @@ export class Controls {
     return this.inside(this.fireRect, x, y);
   }
 
+  /**
+   * This finger is on the fire hit zone. Keep it as the trigger even if an
+   * earlier coordinate check called it a drag or a slot.
+   */
+  claimFire(id: number, x: number, y: number, shipX: number, shipY: number): void {
+    if (id < 0) return;
+    if (this.fireId != null && this.fireId !== id) return;
+    if (this.moveId === id) {
+      this.pointers.delete(id);
+      this.moveId = null;
+    }
+    this.fireId = id;
+    const existing = this.pointers.get(id);
+    if (existing) {
+      existing.role = 'fire';
+      existing.x = x;
+      existing.y = y;
+      return;
+    }
+    this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
+  }
+
   consumeChrome(): boolean {
     const requested = this.chromeRequest;
     this.chromeRequest = false;

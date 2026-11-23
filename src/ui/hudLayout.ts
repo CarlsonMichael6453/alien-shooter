@@ -44,6 +44,13 @@ const MAX_SCALE = 1.8;
 const MIN_OPACITY = 0.35;
 const EDGE = 6;
 
+/**
+ * Space kept under the fire button. iOS Safari claims touches in the strip
+ * above the home indicator and the bottom toolbar, and the button used to sit
+ * inside that strip.
+ */
+export const FIRE_BOTTOM_CLEARANCE = 48;
+
 export function elementLabel(id: HudElementId): string {
   if (id === 'score') return 'Score';
   if (id === 'ammo') return 'Ammo';
@@ -96,14 +103,15 @@ export function defaultLayout(field: Field): HudLayout {
   const height = Math.max(1, field.height);
   const bottomPad = Math.max(8, field.bottom);
   const margin = 14;
-  /** Gap between the fire button and the screen edge, and between it and the home indicator. */
+  /** Gap between the fire button and the screen edge. */
   const corner = 8;
   const stackGap = 8;
   const fire = elementSize('fire', 1, 1);
   const joy = elementSize('joystick', 1, 1);
   const slots = elementSize('inventory', 1, 3);
   const fireX = width - corner - fire.w;
-  const fireY = height - bottomPad - corner - fire.h;
+  const fireClearance = Math.max(field.bottom, FIRE_BOTTOM_CLEARANCE);
+  const fireY = height - fireClearance - fire.h;
   const elements: HudElement[] = [
     { id: 'score', x: 16 / width, y: (pause.y + pause.h + 8) / height, scale: 1, opacity: 1, visible: true },
     { id: 'ammo', x: 16 / width, y: (pause.y + pause.h + 62) / height, scale: 1, opacity: 1, visible: true },
@@ -164,7 +172,8 @@ export function clampElement(element: HudElement, field: Field, inventoryCount: 
   const minX = EDGE;
   const minY = Math.max(EDGE, field.top);
   const maxX = Math.max(minX, field.width - EDGE - size.w);
-  const maxY = Math.max(minY, field.height - Math.max(EDGE, field.bottom) - size.h);
+  const bottomGap = element.id === 'fire' ? Math.max(field.bottom, FIRE_BOTTOM_CLEARANCE) : Math.max(EDGE, field.bottom);
+  const maxY = Math.max(minY, field.height - bottomGap - size.h);
   const px = clampNumber(element.x * field.width, minX, maxX);
   const py = clampNumber(element.y * field.height, minY, maxY);
   return {
@@ -178,9 +187,30 @@ export function clampElement(element: HudElement, field: Field, inventoryCount: 
 }
 
 export function clampLayout(layout: HudLayout, field: Field, inventoryCount: number): { layout: HudLayout; changed: boolean } {
-  const elements = layout.elements.map((element) => clampElement(element, field, inventoryCount));
+  const elements = separateInventoryFromFire(
+    layout.elements.map((element) => clampElement(element, field, inventoryCount)),
+    field,
+    inventoryCount,
+  );
   const changed = elements.some((element, index) => !sameElement(element, layout.elements[index]));
   return { layout: { elements }, changed };
+}
+
+/** Keep the ability row from sitting on the fire button after the button is lifted. */
+function separateInventoryFromFire(elements: HudElement[], field: Field, inventoryCount: number): HudElement[] {
+  const fire = elements.find((element) => element.id === 'fire');
+  const inventory = elements.find((element) => element.id === 'inventory');
+  if (!fire || !inventory || field.height <= 0) return elements;
+  const fireBox = elementBounds(fire, field, 1);
+  const slots = elementBounds(inventory, field, Math.max(1, inventoryCount));
+  const gap = 8;
+  const horizontal = slots.x < fireBox.x + fireBox.w && slots.x + slots.w > fireBox.x;
+  const crowding = slots.y + slots.h + gap > fireBox.y && slots.y < fireBox.y + fireBox.h;
+  if (!horizontal || !crowding) return elements;
+  const nextY = (fireBox.y - gap - slots.h) / field.height;
+  return elements.map((element) =>
+    element.id === 'inventory' ? clampElement({ ...element, y: nextY }, field, inventoryCount) : element,
+  );
 }
 
 function sameElement(a: HudElement, b: HudElement | undefined): boolean {

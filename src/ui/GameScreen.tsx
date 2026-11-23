@@ -834,16 +834,27 @@ function useBrowserInsets(): { top: number; bottom: number } {
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const probe = document.createElement('div');
-    probe.style.cssText =
-      'position:fixed;left:0;top:0;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none;';
-    document.body.appendChild(probe);
-    const computed = getComputedStyle(probe);
-    setInsets({
-      top: Number.parseFloat(computed.paddingTop) || 0,
-      bottom: Number.parseFloat(computed.paddingBottom) || 0,
-    });
-    probe.remove();
+    const read = () => {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:fixed;left:0;top:0;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none;';
+      document.body.appendChild(probe);
+      const computed = getComputedStyle(probe);
+      setInsets({
+        top: Number.parseFloat(computed.paddingTop) || 0,
+        bottom: Number.parseFloat(computed.paddingBottom) || 0,
+      });
+      probe.remove();
+    };
+    read();
+    const frame = requestAnimationFrame(read);
+    window.visualViewport?.addEventListener('resize', read);
+    window.addEventListener('resize', read);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.visualViewport?.removeEventListener('resize', read);
+      window.removeEventListener('resize', read);
+    };
   }, []);
   return insets;
 }
