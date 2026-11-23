@@ -3,6 +3,9 @@ import { DRAG_FOLLOW } from './constants';
 /** Fraction of the stick radius that does not move the ship. */
 export const STICK_DEAD_ZONE = 0.09;
 
+/** Extra reach around an ability icon so a finger is not stolen by the fire button or a drag. */
+export const SLOT_HIT_SLOP = 12;
+
 /**
  * Analog stick output in [-1, 1]. `t` is the travel from the dead zone to the
  * rim, clamped at the edge. Speed fraction is `t` to the power 1.5.
@@ -100,6 +103,17 @@ export class Controls {
     const requested = this.powerRequest;
     this.powerRequest = null;
     return requested;
+  }
+
+  /**
+   * The finger landed on an ability icon. Drop any fire or drag claim that
+   * same finger picked up, and arm that slot. iOS can report the icon as the
+   * touch target even when the point falls in the fire button.
+   */
+  claimPower(id: number, slot: number): void {
+    if (!Number.isInteger(slot) || slot < 0 || slot > 2) return;
+    this.pointerUp(id);
+    this.powerRequest = slot;
   }
 
   consumeChrome(): boolean {
@@ -351,7 +365,14 @@ export class Controls {
   private hitsInventory(x: number, y: number): number {
     for (let index = 0; index < this.inventoryRects.length; index += 1) {
       const rect = this.inventoryRects[index];
-      if (x >= rect.x && y >= rect.y && x <= rect.x + rect.w && y <= rect.y + rect.h) return index;
+      if (
+        x >= rect.x - SLOT_HIT_SLOP &&
+        y >= rect.y - SLOT_HIT_SLOP &&
+        x <= rect.x + rect.w + SLOT_HIT_SLOP &&
+        y <= rect.y + rect.h + SLOT_HIT_SLOP
+      ) {
+        return index;
+      }
     }
     return -1;
   }

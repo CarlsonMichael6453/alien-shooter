@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DRAG_FOLLOW } from './constants';
-import { Controls, STICK_DEAD_ZONE, stickResponse } from './controls';
+import { Controls, SLOT_HIT_SLOP, STICK_DEAD_ZONE, stickResponse } from './controls';
 
 describe('two-finger controls', () => {
   it('treats the first touch as move and the second as fire', () => {
@@ -121,6 +121,39 @@ describe('two-finger controls', () => {
     assert.equal(frame.firing, true);
     controls.mouseUp(2);
     assert.equal(controls.frame().firing, false);
+  });
+
+  it('keeps a tap in the slop under an ability slot from firing or dragging', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    const slot = { x: 334, y: 666, w: 46, h: 46 };
+    controls.setInventoryRects([
+      { x: 230, y: 666, w: 46, h: 46 },
+      slot,
+      { x: 386, y: 666, w: 46, h: 46 },
+    ]);
+    controls.setActionRects(null, { x: 300, y: slot.y + slot.h + 8, w: 80, h: 80 });
+    const x = slot.x + slot.w / 2;
+    const y = slot.y + slot.h + SLOT_HIT_SLOP;
+    assert.equal(controls.pointerDown(4, x, y, 100, 100), 'power');
+    assert.equal(controls.fireId, null);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.consumePower(), 1);
+  });
+
+  it('takes a finger back from the fire button when the icon is the touch target', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    controls.setActionRects(null, { x: 300, y: 720, w: 80, h: 80 });
+    assert.equal(controls.pointerDown(4, 340, 760, 100, 100), 'play');
+    assert.equal(controls.fireId, 4);
+    controls.claimPower(4, 2);
+    assert.equal(controls.fireId, null);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.frame().firing, false);
+    assert.equal(controls.consumePower(), 2);
+    controls.claimPower(5, 9);
+    assert.equal(controls.consumePower(), null);
   });
 
   it('treats a tap on the bomb button as a bomb, not a steering finger', () => {

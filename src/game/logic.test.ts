@@ -320,6 +320,14 @@ describe('simulation', () => {
     step(shield, idleIntent(), 0.016);
     assert.equal(shield.lives, 3);
     assert.equal(shield.shieldHits, 0);
+    shield.inventory = ['shield'];
+    shield.invuln = 0;
+    step(shield, idleIntent({ activateSlot: 0 }), 0.016);
+    shield.enemyBullets.push({ id: 11, x: shield.shipX, y: shield.shipY, vx: 0, vy: 0, r: 5 });
+    step(shield, idleIntent(), 0.016);
+    assert.equal(shield.lives, 3);
+    assert.equal(shield.shieldHits, 0);
+    assert.equal(shield.enemyBullets.length, 0);
 
     const wing = playing();
     wing.inventory = ['wingman'];

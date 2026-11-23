@@ -16,6 +16,12 @@ describe('touch controls over buttons', () => {
     assert.deepEqual(classifyTouch(false, 'power'), { play: false, cancel: true, dropPlayPointer: false });
   });
 
+  it('keeps an ability slot when iOS reports the icon as a menu control', () => {
+    assert.deepEqual(classifyTouch(true, 'play', false, true), { play: false, cancel: true, dropPlayPointer: false });
+    assert.deepEqual(classifyTouch(true, 'power'), { play: false, cancel: true, dropPlayPointer: false });
+    assert.equal(classifyTouch(true, 'play').dropPlayPointer, true);
+  });
+
   it('keeps a finger that landed on the fire button graphic', () => {
     assert.deepEqual(classifyTouch(true, 'play', true), { play: true, cancel: true, dropPlayPointer: false });
     assert.equal(classifyTouch(true, 'play').dropPlayPointer, true);

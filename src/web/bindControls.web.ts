@@ -22,6 +22,15 @@ function uiNode(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-alien-ui]') != null;
 }
 
+function slotIndex(target: EventTarget | null): number | null {
+  if (!(target instanceof Element)) return null;
+  const node = target.closest('[data-alien-slot]');
+  if (!node) return null;
+  const index = Number(node.getAttribute('data-alien-slot'));
+  if (!Number.isInteger(index) || index < 0 || index > 2) return null;
+  return index;
+}
+
 export function bindControls(
   element: HTMLElement,
   controls: Controls,
@@ -39,14 +48,17 @@ export function bindControls(
       if (!uiNode(event.target) && event.cancelable) event.preventDefault();
       return;
     }
-    const onUi = uiNode(event.target);
     const ship = getShip();
     let play = false;
-    let cancel = !onUi;
+    let cancel = true;
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
       const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
-      const decision = classifyTouch(onUi, role, controls.fireId === touch.identifier);
+      const slot = slotIndex(touch.target) ?? (event.changedTouches.length === 1 ? slotIndex(event.target) : null);
+      if (slot != null) controls.claimPower(touch.identifier, slot);
+      const target = touch.target ?? event.target;
+      const onUi = uiNode(target);
+      const decision = classifyTouch(onUi, role, controls.fireId === touch.identifier, slot != null || role === 'power');
       if (decision.dropPlayPointer) controls.pointerUp(touch.identifier);
       if (decision.play) play = true;
       if (!decision.cancel) cancel = false;
@@ -74,7 +86,8 @@ export function bindControls(
   const onTouchEnd = (event: TouchEvent) => {
     // Cancelling touchend suppresses the click mobile browsers send to a button.
     const onUi = uiNode(event.target);
-    if (!isUiOpen() && !onUi && event.cancelable) event.preventDefault();
+    const onSlot = slotIndex(event.target) != null;
+    if (!isUiOpen() && (!onUi || onSlot) && event.cancelable) event.preventDefault();
     if (isUiOpen()) return;
     for (const touch of Array.from(event.changedTouches)) controls.pointerUp(touch.identifier);
   };
@@ -84,6 +97,12 @@ export function bindControls(
     if (isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
     const ship = getShip();
+    const slot = slotIndex(event.target);
+    if (slot != null) {
+      controls.claimPower(event.button === 0 ? -1 : -2, slot);
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     if (uiNode(event.target)) {
       const before = controls.fireId;
       const role = controls.mouseDown(event.button, point.x, point.y, ship.x, ship.y);

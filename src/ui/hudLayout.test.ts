@@ -60,7 +60,9 @@ describe('hud layout', () => {
     const moved = placeElement(layout, 'inventory', 180, 300, phone, 2);
     const rects = inventoryRects(moved.elements[4], phone, 2, 12);
     assert.equal(rects.length, 2);
-    assert.ok(Math.abs(rects[0].x - (180 + 12)) < 1);
+    const full = 46 * 3 + 6 * 2;
+    const used = 46 * 2 + 6;
+    assert.ok(Math.abs(rects[0].x - (180 + (full - used) + 12)) < 1);
     assert.ok(Math.abs(rects[0].y - 300) < 1);
     assert.ok(rects[1].x > rects[0].x);
     const hidden = { ...moved.elements[4], visible: false };
@@ -115,6 +117,14 @@ describe('hud layout', () => {
     const aboveHome = phone.height - phone.bottom - (fire.y + fire.h);
     assert.ok(rightGap >= 6 && rightGap <= 10, `right gap ${rightGap}`);
     assert.ok(aboveHome >= 6 && aboveHome <= 10, `home gap ${aboveHome}`);
+    const lone = inventoryRects(layout.elements.find((element) => element.id === 'inventory')!, phone, 1, 0);
+    const loneBounds = elementBounds(layout.elements.find((element) => element.id === 'inventory')!, phone, 1);
+    assert.equal(lone.length, 1);
+    assert.ok(Math.abs(lone[0].x + lone[0].w - (fire.x + fire.w)) < 1);
+    assert.ok(lone[0].y + lone[0].h <= fire.y + 0.5);
+    assert.ok(!overlaps(lone[0], fire));
+    assert.ok(Math.abs(loneBounds.x - lone[0].x) < 1);
+    assert.ok(Math.abs(loneBounds.w - lone[0].w) < 1);
     const saved = layout.elements.map((element) => (element.id === 'fire' ? { ...element, x: 0.2, y: 0.4 } : element));
     const kept = mergeLayout(saved, phone).elements.find((element) => element.id === 'fire')!;
     assert.ok(Math.abs(kept.x - 0.2) < 0.001);
