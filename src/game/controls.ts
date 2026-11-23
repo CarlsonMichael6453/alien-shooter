@@ -35,6 +35,9 @@ export interface ControlFrame {
   hoverActive: boolean;
   hoverX: number;
   hoverY: number;
+  laserAimActive: boolean;
+  laserAimX: number;
+  laserAimY: number;
 }
 
 export interface BombRect {
@@ -49,7 +52,7 @@ export type ControlScheme = 'joystick' | 'drag';
 
 interface Track {
   id: number;
-  role: 'move' | 'fire';
+  role: 'move' | 'fire' | 'laser';
   x: number;
   y: number;
   originX: number;
@@ -66,6 +69,7 @@ interface Track {
 export class Controls {
   moveId: number | null = null;
   fireId: number | null = null;
+  laserId: number | null = null;
   mouseFire = false;
   hoverX = 0;
   hoverY = 0;
@@ -76,6 +80,7 @@ export class Controls {
   private chromeRects: BombRect[] = [];
   private stickRect: BombRect | null = null;
   private fireRect: BombRect | null = null;
+  private laserRect: BombRect | null = null;
   private scheme: ControlScheme = 'drag';
   private powerRequest: number | null = null;
   private chromeRequest = false;
@@ -89,6 +94,10 @@ export class Controls {
   setActionRects(stick: BombRect | null, fire: BombRect | null): void {
     this.stickRect = stick;
     this.fireRect = fire;
+  }
+
+  setLaserRect(rect: BombRect | null): void {
+    this.laserRect = rect;
   }
 
   setInventoryRects(rects: BombRect[]): void {
@@ -131,6 +140,7 @@ export class Controls {
       this.pointers.delete(id);
       this.moveId = null;
     }
+    if (this.laserId === id) this.laserId = null;
     this.fireId = id;
     const existing = this.pointers.get(id);
     if (existing) {
@@ -140,6 +150,29 @@ export class Controls {
       return;
     }
     this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
+  }
+
+  /**
+   * This finger is on the laser stick. It never takes the fire button or a slot.
+   */
+  claimLaser(id: number, x: number, y: number): void {
+    if (id < 0) return;
+    if (this.fireId === id || this.onFireButton(x, y)) return;
+    if (this.hitsInventory(x, y) >= 0) return;
+    if (this.laserId != null && this.laserId !== id) return;
+    if (this.moveId === id) {
+      this.pointers.delete(id);
+      this.moveId = null;
+    }
+    this.laserId = id;
+    const existing = this.pointers.get(id);
+    if (existing) {
+      existing.role = 'laser';
+      existing.x = x;
+      existing.y = y;
+      return;
+    }
+    this.pointers.set(id, { id, role: 'laser', x, y, originX: x, originY: y, shipX: 0, shipY: 0 });
   }
 
   consumeChrome(): boolean {
@@ -155,7 +188,8 @@ export class Controls {
   }
 
   pointerDown(id: number, x: number, y: number, shipX: number, shipY: number): PointerRole {
-    if (this.pointers.has(id)) return 'play';
+    // A touchstart for an id we still hold means the earlier touchend never arrived.
+    if (this.pointers.has(id)) this.pointerUp(id);
     const slot = this.hitsInventory(x, y);
     if (slot >= 0) {
       this.powerRequest = slot;
@@ -165,12 +199,16 @@ export class Controls {
       this.chromeRequest = true;
       return 'chrome';
     }
-    if (this.scheme === 'joystick' && id >= 0) return this.claimPad(id, x, y, shipX, shipY);
     if (id >= 0 && this.fireId == null && this.inside(this.fireRect, x, y)) {
       this.fireId = id;
       this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
       return 'play';
     }
+    if (id >= 0 && this.inside(this.laserRect, x, y)) {
+      this.claimLaser(id, x, y);
+      return 'play';
+    }
+    if (this.scheme === 'joystick' && id >= 0) return this.claimPad(id, x, y, shipX, shipY);
     if (this.moveId == null) {
       this.moveId = id;
       this.pointers.set(id, {
@@ -208,12 +246,22 @@ export class Controls {
     track.y = y;
   }
 
+  /** Drop fingers that are no longer on the screen. Mouse buttons use negative ids and are left alone. */
+  syncTouches(live: Iterable<number>): void {
+    const down = new Set(live);
+    for (const id of [...this.pointers.keys()]) {
+      if (id < 0 || down.has(id)) continue;
+      this.pointerUp(id);
+    }
+  }
+
   pointerUp(id: number): void {
     const track = this.pointers.get(id);
     if (!track) return;
     this.pointers.delete(id);
     if (this.moveId === id) this.moveId = null;
     if (this.fireId === id) this.fireId = null;
+    if (this.laserId === id) this.laserId = null;
   }
 
   /** Left button steers. Right or middle button fires, even if it lands first. */
@@ -282,6 +330,7 @@ export class Controls {
     this.keys.clear();
     this.moveId = null;
     this.fireId = null;
+    this.laserId = null;
     this.mouseFire = false;
     this.hoverActive = false;
     this.powerRequest = null;
@@ -357,6 +406,18 @@ export class Controls {
       hoverActive: this.hoverActive,
       hoverX: this.hoverX,
       hoverY: this.hoverY,
+      ...this.laserAim(),
+    };
+  }
+
+  private laserAim(): { laserAimActive: boolean; laserAimX: number; laserAimY: number } {
+    const rect = this.laserRect;
+    const track = this.laserId == null ? undefined : this.pointers.get(this.laserId);
+    if (!rect || !track) return { laserAimActive: false, laserAimX: 0, laserAimY: 0 };
+    return {
+      laserAimActive: true,
+      laserAimX: track.x - (rect.x + rect.w / 2),
+      laserAimY: track.y - (rect.y + rect.h / 2),
     };
   }
 

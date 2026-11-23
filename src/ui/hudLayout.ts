@@ -50,6 +50,7 @@ const EDGE = 6;
  * inside that strip.
  */
 export const FIRE_BOTTOM_CLEARANCE = 48;
+export const LASER_STICK_SIZE = 92;
 
 export function elementLabel(id: HudElementId): string {
   if (id === 'score') return 'Score';
@@ -74,6 +75,19 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
   const slot = SLOT_SIZE * scale;
   const gap = SLOT_GAP * scale;
   return { w: slot * count + gap * (count - 1), h: slot };
+}
+
+/** Small aim stick. It sits above the movement stick and clear of the fire button. */
+export function laserStickRect(field: Field): HudRect {
+  const size = LASER_STICK_SIZE;
+  const joy = elementSize('joystick', 1, 1);
+  const bottomPad = Math.max(8, field.bottom);
+  const joyTop = field.height - bottomPad - 14 - joy.h;
+  const clearance = Math.max(field.bottom, FIRE_BOTTOM_CLEARANCE);
+  const minTop = Math.max(EDGE, field.top);
+  const maxTop = Math.max(minTop, field.height - clearance - size);
+  const y = Math.min(maxTop, Math.max(minTop, joyTop - 12 - size));
+  return { x: 16, y, w: size, h: size };
 }
 
 export function gearRect(field: Field): HudRect {

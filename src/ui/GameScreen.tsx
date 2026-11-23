@@ -30,6 +30,7 @@ import {
   resetButtonLayout,
   gearRect,
   inventoryRects,
+  laserStickRect,
   loadLayout,
   mergeLayout,
   patchElement,
@@ -55,6 +56,8 @@ import {
   type TutorialProgress,
   type TutorialSession,
 } from './tutorial';
+import { LASER_HINT_SECONDS, loadLaserHintSeen, saveLaserHintSeen } from './laserHint';
+import { LASER_AIM_RADIUS } from '../game/laserAim';
 
 const INITIAL_HUD: HudModel = {
   mode: 'ready',
@@ -65,6 +68,9 @@ const INITIAL_HUD: HudModel = {
   stickX: 0,
   stickY: 0,
   fireHeld: false,
+  laserAimX: 0,
+  laserAimY: 0,
+  laserHint: false,
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
@@ -146,6 +152,10 @@ export function GameScreen() {
   const hudLayoutRef = useRef<HudLayout | null>(null);
   const savedLayoutRef = useRef<HudElement[] | null>(null);
   const loadedRef = useRef(false);
+  const laserHintSeenRef = useRef(false);
+  const laserHintOnRef = useRef(false);
+  const laserHintTimeRef = useRef(0);
+  const laserWasOnRef = useRef(false);
   const [layout, setLayout] = useState<HudLayout | null>(null);
   const tutorialRef = useRef<TutorialProgress>(FRESH_TUTORIAL);
   const sessionRef = useRef<TutorialSession>(freshSession());
@@ -223,13 +233,15 @@ export function GameScreen() {
 
   useEffect(() => {
     const onAppState = (next: string) => {
+      // On the web, AppState can stay "background" after the tab is visible again and freeze the sim.
+      if (Platform.OS === 'web') return;
       pausedRef.current = next !== 'active';
       if (next !== 'active') controlsRef.current.clearTransient();
     };
     const subscription = AppState.addEventListener('change', onAppState);
     const onVisibility = () => {
       pausedRef.current = document.hidden;
-      if (document.hidden) controlsRef.current.clearTransient();
+      controlsRef.current.clearTransient();
     };
     if (Platform.OS === 'web') document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -242,15 +254,17 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating, audioSettings, savedScheme, savedProfile] = await Promise.all([
+      const [progress, saved, rating, audioSettings, savedScheme, savedProfile, laserSeen] = await Promise.all([
         loadTutorial(store),
         loadLayout(store),
         loadRatingMemory(store),
         loadAudio(store),
         loadControlScheme(store),
         loadProfile(store),
+        loadLaserHintSeen(store),
       ]);
       if (cancel) return;
+      laserHintSeenRef.current = laserSeen;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
@@ -323,6 +337,13 @@ export function GameScreen() {
           playingUi && schemeRef.current === 'joystick' && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
           playingUi && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
         );
+        const laserOn = state.mode === 'playing' && state.laserTimer > 0 && playingUi;
+        if (laserOn) {
+          const aim = laserStickRect(field);
+          controlsRef.current.setLaserRect({ ...aim, x: aim.x + offsetRef.current });
+        } else {
+          controlsRef.current.setLaserRect(null);
+        }
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
         const modeBefore = state.mode;
@@ -344,6 +365,22 @@ export function GameScreen() {
           startRef.current = false;
           restartRef.current = false;
           if (restarting) controlsRef.current.reanchor(state.shipX, state.shipY);
+          const aiming = state.laserTimer > 0;
+          if (aiming && !laserWasOnRef.current && !laserHintSeenRef.current) {
+            laserHintOnRef.current = true;
+            laserHintTimeRef.current = 0;
+          }
+          if (!aiming) laserHintOnRef.current = false;
+          if (laserHintOnRef.current && aiming) {
+            laserHintTimeRef.current += dt;
+            const moved = Math.hypot(control.laserAimX, control.laserAimY) > LASER_AIM_RADIUS * 0.2;
+            if (laserHintTimeRef.current >= LASER_HINT_SECONDS || (control.laserAimActive && moved)) {
+              laserHintOnRef.current = false;
+              laserHintSeenRef.current = true;
+              void saveLaserHintSeen(storeRef.current);
+            }
+          }
+          laserWasOnRef.current = aiming;
         } else {
           controlsRef.current.consumePower();
         }
@@ -400,7 +437,19 @@ export function GameScreen() {
         }
         canvasRef.current?.draw(state);
         pickupsRef.current?.sync(state);
-        publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
+        publishHud(
+          state,
+          hudRef,
+          setHud,
+          fineRef.current,
+          schemeRef.current,
+          control.stickX,
+          control.stickY,
+          control.firing,
+          control.laserAimX,
+          control.laserAimY,
+          laserHintOnRef.current && state.laserTimer > 0,
+        );
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
         openEditor: () => openUiRef.current('editor'),
@@ -609,6 +658,9 @@ function publishHud(
   stickX: number,
   stickY: number,
   fireHeld: boolean,
+  laserAimX: number,
+  laserAimY: number,
+  laserHint: boolean,
 ): void {
   const powerOn =
     state.rapidTimer > 0 ||
@@ -624,11 +676,9 @@ function publishHud(
       ? null
       : state.ammo <= 0
         ? 'Out of ammo — fly into a box'
-        : state.laserTimer > 0
-          ? finePointer
-            ? 'Point the mouse to aim the laser'
-            : 'Drag the fire button to aim'
-          : state.shotsFired === 0 && state.time < 8
+            : state.laserTimer > 0 && finePointer
+              ? 'Point the mouse to aim the laser'
+              : state.shotsFired === 0 && state.time < 8
             ? finePointer
               ? 'Hold Space or the fire button'
               : 'Hold the fire button'
@@ -655,7 +705,10 @@ function publishHud(
     prev.bossHp === (state.boss?.hp ?? 0) &&
     Math.abs(prev.stickX - stickX) < 0.02 &&
     Math.abs(prev.stickY - stickY) < 0.02 &&
-    prev.fireHeld === fireHeld
+    prev.fireHeld === fireHeld &&
+    Math.abs(prev.laserAimX - laserAimX) < 1 &&
+    Math.abs(prev.laserAimY - laserAimY) < 1 &&
+    prev.laserHint === laserHint
   ) {
     return;
   }
@@ -682,6 +735,9 @@ function publishHud(
     stickX,
     stickY,
     fireHeld,
+    laserAimX,
+    laserAimY,
+    laserHint,
   };
   hudRef.current = next;
   setHud(next);

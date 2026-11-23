@@ -1,3 +1,4 @@
+import { clampLaserAngle, laserAngleFromStick } from './laserAim';
 import {
   AMMO_FIRST_DELAY,
   AMMO_INTERVAL_FAST,
@@ -17,7 +18,6 @@ import {
   INVULN_TIME,
   KEYBOARD_SPEED,
   STICK_SPEED,
-  LASER_AIM_DEADZONE,
   LASER_DPS,
   LASER_DURATION,
   MAX_BULLETS,
@@ -72,11 +72,14 @@ export function idleIntent(partial: Partial<Intent> = {}): Intent {
     fireDragY: 0,
     stickX: 0,
     stickY: 0,
-    hoverActive: false,
-    hoverX: 0,
-    hoverY: 0,
-    ...partial,
-  };
+  hoverActive: false,
+  hoverX: 0,
+  hoverY: 0,
+  laserAimActive: false,
+  laserAimX: 0,
+  laserAimY: 0,
+  ...partial,
+};
 }
 
 export function difficulty(time: number): Difficulty {
@@ -363,13 +366,20 @@ function moveShip(state: GameState, intent: Intent, dt: number): void {
 
 function updateAim(state: GameState, intent: Intent): void {
   if (state.laserTimer <= 0) return;
-  const drag = Math.hypot(intent.fireDragX, intent.fireDragY);
-  if (drag >= LASER_AIM_DEADZONE) {
-    state.laserAngle = Math.atan2(intent.fireDragY, intent.fireDragX);
+  if (intent.laserAimActive) {
+    const angle = laserAngleFromStick(intent.laserAimX, intent.laserAimY);
+    if (angle != null) state.laserAngle = angle;
     return;
   }
   if (intent.hoverActive) {
-    state.laserAngle = Math.atan2(intent.hoverY - state.shipY, intent.hoverX - state.shipX);
+    state.laserAngle = clampLaserAngle(Math.atan2(intent.hoverY - state.shipY, intent.hoverX - state.shipX));
+  }
+}
+
+function normalizeShield(state: GameState): void {
+  if (state.shieldHits <= 0 || state.shieldTimer <= 0) {
+    state.shieldHits = 0;
+    state.shieldTimer = 0;
   }
 }
 
@@ -379,10 +389,8 @@ function tickPowers(state: GameState, dt: number): void {
   state.wingmanTimer = Math.max(0, state.wingmanTimer - dt);
   state.warpTimer = Math.max(0, state.warpTimer - dt);
   state.sectorBanner = Math.max(0, state.sectorBanner - dt);
-  if (state.shieldTimer > 0) {
-    state.shieldTimer = Math.max(0, state.shieldTimer - dt);
-    if (state.shieldTimer === 0) state.shieldHits = 0;
-  }
+  if (state.shieldTimer > 0) state.shieldTimer = Math.max(0, state.shieldTimer - dt);
+  normalizeShield(state);
 }
 
 function warpPace(state: GameState): number {
@@ -390,10 +398,11 @@ function warpPace(state: GameState): number {
 }
 
 function powerActive(state: GameState): boolean {
+  normalizeShield(state);
   return (
     state.rapidTimer > 0 ||
     state.laserTimer > 0 ||
-    state.shieldTimer > 0 ||
+    state.shieldHits > 0 ||
     state.wingmanTimer > 0 ||
     state.warpTimer > 0 ||
     state.missileLeft > 0 ||
@@ -745,7 +754,12 @@ function collide(state: GameState, dt: number): void {
     if (!hit) flying.push(missile);
   }
   state.missiles = flying.filter(
-    (missile) => missile.y > -50 && missile.y < state.height + 50 && missile.x > -50 && missile.x < state.width + 50,
+    (missile) =>
+      missile.age < 5 &&
+      missile.y > -50 &&
+      missile.y < state.height + 50 &&
+      missile.x > -50 &&
+      missile.x < state.width + 50,
   );
 
   if (state.laserTimer > 0) {
@@ -1142,6 +1156,7 @@ function launchMissile(state: GameState): void {
     targetId: aim && !aim.boss ? aim.id : null,
     boss: aim?.boss ?? false,
     smoke: 0,
+    age: 0,
   };
   state.missiles.push(missile);
 }
@@ -1164,6 +1179,7 @@ function tickMissiles(state: GameState, dt: number): void {
       const desired = Math.atan2(target.y - missile.y, target.x - missile.x);
       missile.angle = turnToward(missile.angle, desired, MISSILE_TURN * dt);
     }
+    missile.age += dt;
     missile.x += Math.cos(missile.angle) * MISSILE_SPEED * dt;
     missile.y += Math.sin(missile.angle) * MISSILE_SPEED * dt;
     missile.smoke -= dt;

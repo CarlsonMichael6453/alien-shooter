@@ -5,6 +5,7 @@ import {
   elementBounds,
   elementLabel,
   gearRect,
+  laserStickRect,
   pauseRect,
   type Field,
   type HudElement,
@@ -18,7 +19,7 @@ import { AbilityGlyph } from './AbilityGlyph';
 import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 import { MainMenu, PauseMenu, PrivacyPage, ScoreBoard, ShipSelect } from './Menus';
 import type { Profile } from './profile';
-import { markFireZone } from '../web/bindControls';
+import { markFireZone, markLaserZone } from '../web/bindControls';
 
 export interface HudModel {
   mode: Mode;
@@ -43,6 +44,9 @@ export interface HudModel {
   stickY: number;
   fireHeld: boolean;
   wave: number;
+  laserAimX: number;
+  laserAimY: number;
+  laserHint: boolean;
 }
 
 export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback' | 'pause' | 'scores' | 'ships' | 'privacy';
@@ -181,6 +185,7 @@ export function Overlay({
           })
         : null}
       {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
+      {playing && model.laserTimer > 0 ? <LaserAimStick field={field} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} /> : null}
 
       {playing && ui === 'none' && cue ? (
         <TutorialPrompt cue={cue} field={field} finePointer={finePointer} inventory={inventory ?? null} count={Math.max(1, model.inventory.length)} scheme={scheme} />
@@ -859,6 +864,46 @@ function VolumeRow({
   );
 }
 
+function LaserAimStick({ field, aimX, aimY, hint }: { field: Field; aimX: number; aimY: number; hint: boolean }) {
+  const stick = laserStickRect(field);
+  const travel = stick.w * 0.28;
+  const knob = stick.w * 0.34;
+  const dx = Math.max(-travel, Math.min(travel, aimX));
+  const dy = Math.max(-travel, Math.min(travel, aimY));
+  return (
+    <>
+      <View
+        ref={markLaserZone}
+        collapsable={false}
+        pointerEvents="auto"
+        accessibilityLabel="Aim laser"
+        style={[styles.laserStick, { left: stick.x, top: stick.y, width: stick.w, height: stick.h }]}
+      >
+        <View style={styles.laserBase} />
+        <View
+          pointerEvents="none"
+          style={[
+            styles.laserKnob,
+            {
+              width: knob,
+              height: knob,
+              borderRadius: knob / 2,
+              left: stick.w / 2 - knob / 2 + dx,
+              top: stick.h / 2 - knob / 2 + dy,
+            },
+          ]}
+        />
+      </View>
+      {hint ? (
+        <View pointerEvents="none" style={[styles.laserHint, { left: stick.x - 8, top: Math.max(field.top + 8, stick.y - 78), width: stick.w + 16 }]}>
+          <Text style={styles.laserHintText}>Aim laser</Text>
+          <View style={styles.chevron} />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
 function FireCatcher({ layout, field }: { layout: HudLayout; field: Field }) {
   const fire = layout.elements.find((element) => element.id === 'fire');
   if (!fire?.visible) return null;
@@ -898,6 +943,38 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 30,
     backgroundColor: 'transparent',
+  },
+  laserStick: {
+    position: 'absolute',
+    zIndex: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  laserBase: {
+    width: '78%',
+    height: '78%',
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 120, 48, 0.9)',
+    backgroundColor: 'rgba(40, 16, 8, 0.55)',
+  },
+  laserKnob: {
+    position: 'absolute',
+    backgroundColor: '#FFB089',
+  },
+  laserHint: {
+    position: 'absolute',
+    zIndex: 29,
+    alignItems: 'center',
+  },
+  laserHintText: {
+    color: '#FFE7D2',
+    fontFamily: font,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   piece: {
     position: 'absolute',
