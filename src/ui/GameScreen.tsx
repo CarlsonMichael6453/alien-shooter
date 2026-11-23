@@ -21,7 +21,8 @@ import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
 import { pulseHaptic } from './haptics';
 import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
-import { FRESH_PROFILE, loadProfile, recordRun, saveProfile, selectShip, type Profile } from './profile';
+import { EMPTY_ENTITLEMENTS, devUnlockAllFromLocation, type Entitlements } from '../game/premium';
+import { FRESH_PROFILE, loadProfile, playableShipId, recordRun, saveProfile, selectShip, type Profile } from './profile';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import {
   clampLayout,
@@ -30,6 +31,7 @@ import {
   resetButtonLayout,
   gearRect,
   inventoryRects,
+  laserStickRect,
   loadLayout,
   mergeLayout,
   patchElement,
@@ -55,6 +57,8 @@ import {
   type TutorialProgress,
   type TutorialSession,
 } from './tutorial';
+import { LASER_HINT_SECONDS, loadLaserHintSeen, saveLaserHintSeen } from './laserHint';
+import { LASER_AIM_RADIUS } from '../game/laserAim';
 
 const INITIAL_HUD: HudModel = {
   mode: 'ready',
@@ -65,6 +69,10 @@ const INITIAL_HUD: HudModel = {
   stickX: 0,
   stickY: 0,
   fireHeld: false,
+  laserAimX: 0,
+  laserAimY: 0,
+  laserHint: false,
+  shipId: 'classic',
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
@@ -146,6 +154,10 @@ export function GameScreen() {
   const hudLayoutRef = useRef<HudLayout | null>(null);
   const savedLayoutRef = useRef<HudElement[] | null>(null);
   const loadedRef = useRef(false);
+  const laserHintSeenRef = useRef(false);
+  const laserHintOnRef = useRef(false);
+  const laserHintTimeRef = useRef(0);
+  const laserWasOnRef = useRef(false);
   const [layout, setLayout] = useState<HudLayout | null>(null);
   const tutorialRef = useRef<TutorialProgress>(FRESH_TUTORIAL);
   const sessionRef = useRef<TutorialSession>(freshSession());
@@ -156,6 +168,9 @@ export function GameScreen() {
   const [ui, setUi] = useState<UiMode>('none');
   const [profile, setProfile] = useState<Profile>(FRESH_PROFILE);
   const profileRef = useRef<Profile>(FRESH_PROFILE);
+  const [entitlements, setEntitlements] = useState<Entitlements>(EMPTY_ENTITLEMENTS);
+  const entitlementsRef = useRef<Entitlements>(EMPTY_ENTITLEMENTS);
+  entitlementsRef.current = entitlements;
   const returnRef = useRef<UiMode>('none');
   const [selected, setSelected] = useState<HudElementId>('score');
   const ratingRef = useRef<RatingMemory>({ never: false, lastAskedAt: null, deaths: 0 });
@@ -186,6 +201,11 @@ export function GameScreen() {
 
   useEffect(() => {
     if (Platform.OS === 'web') audio.installUnlock();
+    if (Platform.OS === 'web' && devUnlockAllFromLocation(globalThis.location?.search ?? '')) {
+      const next = { owned: [], unlockAll: true };
+      entitlementsRef.current = next;
+      setEntitlements(next);
+    }
   }, []);
 
   useEffect(() => {
@@ -223,13 +243,15 @@ export function GameScreen() {
 
   useEffect(() => {
     const onAppState = (next: string) => {
+      // On the web, AppState can stay "background" after the tab is visible again and freeze the sim.
+      if (Platform.OS === 'web') return;
       pausedRef.current = next !== 'active';
       if (next !== 'active') controlsRef.current.clearTransient();
     };
     const subscription = AppState.addEventListener('change', onAppState);
     const onVisibility = () => {
       pausedRef.current = document.hidden;
-      if (document.hidden) controlsRef.current.clearTransient();
+      controlsRef.current.clearTransient();
     };
     if (Platform.OS === 'web') document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -242,22 +264,27 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating, audioSettings, savedScheme, savedProfile] = await Promise.all([
+      const [progress, saved, rating, audioSettings, savedScheme, savedProfile, laserSeen] = await Promise.all([
         loadTutorial(store),
         loadLayout(store),
         loadRatingMemory(store),
         loadAudio(store),
         loadControlScheme(store),
         loadProfile(store),
+        loadLaserHintSeen(store),
       ]);
       if (cancel) return;
+      laserHintSeenRef.current = laserSeen;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
-      profileRef.current = savedProfile;
-      setProfile(savedProfile);
+      const playable = playableShipId(savedProfile, entitlementsRef.current);
+      const ready = playable === savedProfile.shipId ? savedProfile : { ...savedProfile, shipId: playable };
+      profileRef.current = ready;
+      setProfile(ready);
+      if (playable !== savedProfile.shipId) void saveProfile(store, ready);
       if (stateRef.current) {
-        stateRef.current.shipId = savedProfile.shipId;
+        stateRef.current.shipId = ready.shipId;
         stateRef.current.best = Math.max(stateRef.current.best, savedProfile.bestScore);
       }
       setAudioUi(audioSettings);
@@ -323,6 +350,13 @@ export function GameScreen() {
           playingUi && schemeRef.current === 'joystick' && stick?.visible ? shiftedRect(stick, field, offsetRef.current) : null,
           playingUi && fire?.visible ? shiftedRect(fire, field, offsetRef.current) : null,
         );
+        const laserOn = state.mode === 'playing' && state.laserTimer > 0 && playingUi;
+        if (laserOn) {
+          const aim = laserStickRect(field);
+          controlsRef.current.setLaserRect({ ...aim, x: aim.x + offsetRef.current });
+        } else {
+          controlsRef.current.setLaserRect(null);
+        }
         const shotsBefore = state.shotsFired;
         const inventoryBefore = state.inventory.length;
         const modeBefore = state.mode;
@@ -344,6 +378,22 @@ export function GameScreen() {
           startRef.current = false;
           restartRef.current = false;
           if (restarting) controlsRef.current.reanchor(state.shipX, state.shipY);
+          const aiming = state.laserTimer > 0;
+          if (aiming && !laserWasOnRef.current && !laserHintSeenRef.current) {
+            laserHintOnRef.current = true;
+            laserHintTimeRef.current = 0;
+          }
+          if (!aiming) laserHintOnRef.current = false;
+          if (laserHintOnRef.current && aiming) {
+            laserHintTimeRef.current += dt;
+            const moved = Math.hypot(control.laserAimX, control.laserAimY) > LASER_AIM_RADIUS * 0.2;
+            if (laserHintTimeRef.current >= LASER_HINT_SECONDS || (control.laserAimActive && moved)) {
+              laserHintOnRef.current = false;
+              laserHintSeenRef.current = true;
+              void saveLaserHintSeen(storeRef.current);
+            }
+          }
+          laserWasOnRef.current = aiming;
         } else {
           controlsRef.current.consumePower();
         }
@@ -400,7 +450,20 @@ export function GameScreen() {
         }
         canvasRef.current?.draw(state);
         pickupsRef.current?.sync(state);
-        publishHud(state, hudRef, setHud, fineRef.current, schemeRef.current, control.stickX, control.stickY, control.firing);
+        publishHud(
+          state,
+          hudRef,
+          setHud,
+          fineRef.current,
+          schemeRef.current,
+          control.stickX,
+          control.stickY,
+          control.firing,
+          control.laserAimX,
+          control.laserAimY,
+          laserHintOnRef.current && state.laserTimer > 0,
+          state.shipId,
+        );
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
         openEditor: () => openUiRef.current('editor'),
@@ -550,6 +613,7 @@ export function GameScreen() {
             }}
             onResetLayout={() => commitLayout(defaultLayout(field), true)}
             profile={profile}
+            entitlements={entitlements}
             onPlay={() => {
               startRef.current = true;
               if (Platform.OS === 'web') {
@@ -573,7 +637,7 @@ export function GameScreen() {
             onOpenPrivacy={() => openUi('privacy', 'none')}
             closeLabel={returnRef.current === 'pause' ? 'Back' : hud.mode === 'playing' ? 'Resume' : 'Close'}
             onSelectShip={(id) => {
-              const next = selectShip(profileRef.current, id);
+              const next = selectShip(profileRef.current, id, entitlementsRef.current);
               profileRef.current = next;
               setProfile(next);
               if (stateRef.current) stateRef.current.shipId = next.shipId;
@@ -609,6 +673,10 @@ function publishHud(
   stickX: number,
   stickY: number,
   fireHeld: boolean,
+  laserAimX: number,
+  laserAimY: number,
+  laserHint: boolean,
+  shipId: string,
 ): void {
   const powerOn =
     state.rapidTimer > 0 ||
@@ -624,11 +692,9 @@ function publishHud(
       ? null
       : state.ammo <= 0
         ? 'Out of ammo — fly into a box'
-        : state.laserTimer > 0
-          ? finePointer
-            ? 'Point the mouse to aim the laser'
-            : 'Drag the fire button to aim'
-          : state.shotsFired === 0 && state.time < 8
+            : state.laserTimer > 0 && finePointer
+              ? 'Point the mouse to aim the laser'
+              : state.shotsFired === 0 && state.time < 8
             ? finePointer
               ? 'Hold Space or the fire button'
               : 'Hold the fire button'
@@ -655,7 +721,11 @@ function publishHud(
     prev.bossHp === (state.boss?.hp ?? 0) &&
     Math.abs(prev.stickX - stickX) < 0.02 &&
     Math.abs(prev.stickY - stickY) < 0.02 &&
-    prev.fireHeld === fireHeld
+    prev.fireHeld === fireHeld &&
+    Math.abs(prev.laserAimX - laserAimX) < 1 &&
+    Math.abs(prev.laserAimY - laserAimY) < 1 &&
+    prev.laserHint === laserHint &&
+    prev.shipId === shipId
   ) {
     return;
   }
@@ -682,6 +752,10 @@ function publishHud(
     stickX,
     stickY,
     fireHeld,
+    laserAimX,
+    laserAimY,
+    laserHint,
+    shipId,
   };
   hudRef.current = next;
   setHud(next);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO, STICK_SPEED } from './constants';
+import { LASER_AIM_RADIUS, laserAngleFromStick } from './laserAim';
 import { chooseMissileTarget, createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
 import { createRng } from './rng';
 
@@ -290,6 +291,110 @@ describe('simulation', () => {
     assert.equal(state.shotsFired, 0);
   });
 
+  it('drops a missile that never leaves, then lets the next power start', () => {
+    const state = playing();
+    state.missiles = [{ x: state.shipX, y: state.shipY - 40, angle: 0, targetId: null, boss: false, smoke: 1, age: 6 }];
+    state.missileLeft = 0;
+    step(state, idleIntent(), 0.05);
+    assert.equal(state.missiles.length, 0);
+    state.inventory = ['rapid'];
+    step(state, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.ok(state.rapidTimer > 1);
+  });
+
+  it('activates every power again across a long run', () => {
+    const state = playing();
+    state.spawnCooldown = 9999;
+    state.invuln = 9999;
+    const kinds = ['shield', 'rapid', 'laser', 'wingman', 'warp', 'missiles', 'bomb'] as const;
+    const busy = () =>
+      state.rapidTimer > 0 ||
+      state.laserTimer > 0 ||
+      state.shieldHits > 0 ||
+      state.wingmanTimer > 0 ||
+      state.warpTimer > 0 ||
+      state.missileLeft > 0 ||
+      state.missiles.length > 0 ||
+      state.bomb != null ||
+      state.blast != null;
+    for (let minute = 0; minute < 10; minute += 1) {
+      for (let t = 0; t < 60; t += 0.05) step(state, idleIntent(), 0.05);
+      for (const kind of kinds) {
+        for (let i = 0; i < 400 && busy(); i += 1) step(state, idleIntent(), 0.05);
+        assert.equal(busy(), false, `${kind} still busy at minute ${minute}`);
+        state.inventory = [kind];
+        step(state, idleIntent({ activateSlot: 0 }), 0.016);
+        if (kind === 'shield') assert.equal(state.shieldHits, 1);
+        if (kind === 'rapid') assert.ok(state.rapidTimer > 0);
+        if (kind === 'laser') assert.ok(state.laserTimer > 0);
+        if (kind === 'wingman') assert.ok(state.wingmanTimer > 0);
+        if (kind === 'warp') assert.ok(state.warpTimer > 0);
+        if (kind === 'missiles') assert.ok(state.missileLeft > 0);
+        if (kind === 'bomb') assert.ok(state.bomb);
+        assert.equal(state.mode, 'playing');
+      }
+    }
+  });
+
+  it('arms a shield again after it expires, after it blocks a hit, and after a restart', () => {
+    const state = playing();
+    const arm = () => {
+      state.inventory = ['shield'];
+      state.invuln = 0;
+      step(state, idleIntent({ activateSlot: 0 }), 0.016);
+      assert.equal(state.shieldHits, 1);
+      assert.ok(state.shieldTimer > 5);
+      assert.deepEqual(state.inventory, []);
+    };
+    const block = () => {
+      state.enemies.push(makeEnemy({ id: state.enemies.length + 1, x: state.shipX, y: state.shipY, r: 18, hp: 4, maxHp: 4, vy: 0 }));
+      step(state, idleIntent(), 0.016);
+      assert.equal(state.lives, 3);
+      assert.equal(state.shieldHits, 0);
+      assert.equal(state.shieldTimer, 0);
+    };
+    arm();
+    block();
+    arm();
+    block();
+    arm();
+    for (let i = 0; i < 140; i += 1) step(state, idleIntent(), 0.05);
+    assert.equal(state.shieldHits, 0);
+    assert.equal(state.shieldTimer, 0);
+    arm();
+    block();
+    state.lives = 0;
+    state.mode = 'over';
+    state.overTimer = 1;
+    step(state, idleIntent({ restart: true }), 0.016);
+    assert.equal(state.mode, 'playing');
+    assert.equal(state.lives, 3);
+    assert.equal(state.shieldHits, 0);
+    arm();
+    block();
+  });
+
+  it('follows the laser stick and keeps that angle after the stick is released', () => {
+    const state = playing();
+    state.laserTimer = 2;
+    state.laserAngle = -Math.PI / 2;
+    state.shipX = 200;
+    state.shipY = 500;
+    const aim = laserAngleFromStick(LASER_AIM_RADIUS, -8);
+    assert.ok(aim != null);
+    step(state, idleIntent({ laserAimActive: true, laserAimX: LASER_AIM_RADIUS, laserAimY: -8 }), 0.05);
+    assert.ok(Math.abs(state.laserAngle - aim) < 0.001);
+    const nose = { x: state.shipX, y: state.shipY - 24 };
+    state.enemies.push(makeEnemy({ id: 1, x: nose.x + Math.cos(aim) * 180, y: nose.y + Math.sin(aim) * 180, r: 16, hp: 10, maxHp: 10 }));
+    state.enemies.push(makeEnemy({ id: 2, x: nose.x, y: nose.y - 180, r: 16, hp: 10, maxHp: 10 }));
+    step(state, idleIntent(), 0.05);
+    assert.ok(Math.abs(state.laserAngle - aim) < 0.001);
+    const onBeam = state.enemies.find((enemy) => enemy.id === 1);
+    const above = state.enemies.find((enemy) => enemy.id === 2);
+    assert.ok(onBeam && onBeam.hp < 10);
+    assert.ok(above && above.hp === 10);
+  });
+
   it('stores a power-up until its icon is tapped and ignores a fourth one', () => {
     const state = playing();
     state.pickups.push({ id: 1, kind: 'rapid', amount: 0, x: state.shipX, y: state.shipY, vy: 0, r: 16, spin: 0 });
@@ -398,7 +503,7 @@ describe('simulation', () => {
     step(state, idleIntent(), 0.05);
     assert.equal(state.enemies.find((enemy) => enemy.id === near.id)?.hp, 7);
     state.enemies = state.enemies.filter((enemy) => enemy.id === far.id);
-    state.missiles = [{ x: far.x + 80, y: far.y, angle: -Math.PI / 2, targetId: 99, boss: false, smoke: 1 }];
+    state.missiles = [{ x: far.x + 80, y: far.y, angle: -Math.PI / 2, targetId: 99, boss: false, smoke: 1, age: 0 }];
     step(state, idleIntent(), 0.05);
     assert.equal(state.missiles[0]?.targetId, far.id);
   });

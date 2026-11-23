@@ -26,6 +26,10 @@ function fireZone(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-alien-fire]') != null;
 }
 
+function laserZone(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-alien-laser]') != null;
+}
+
 function slotIndex(target: EventTarget | null): number | null {
   if (!(target instanceof Element)) return null;
   const node = target.closest('[data-alien-slot]');
@@ -71,6 +75,41 @@ export function markFireZone(node: unknown): void {
 
 let fireTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
 let fireReleaseHandler: ((id: number) => void) | null = null;
+let laserTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
+
+export function markLaserZone(node: unknown): void {
+  const element = node as HTMLElement | null;
+  if (!element?.setAttribute || !element.addEventListener) return;
+  element.setAttribute('data-alien-laser', '1');
+  element.style.touchAction = 'none';
+  if (element.dataset.laserBound === '1') return;
+  element.dataset.laserBound = '1';
+  const localPoint = (touch: Touch) => {
+    const root = document.getElementById('alien-shooter-root');
+    const rect = root?.getBoundingClientRect();
+    return {
+      x: rect ? touch.clientX - rect.left : touch.clientX,
+      y: rect ? touch.clientY - rect.top : touch.clientY,
+    };
+  };
+  const start = (event: TouchEvent) => {
+    event.preventDefault();
+    const handler = laserTouchHandler;
+    if (!handler) return;
+    for (const touch of Array.from(event.changedTouches)) {
+      const point = localPoint(touch);
+      handler(touch.identifier, point.x, point.y);
+    }
+  };
+  const end = (event: TouchEvent) => {
+    const handler = fireReleaseHandler;
+    if (!handler) return;
+    for (const touch of Array.from(event.changedTouches)) handler(touch.identifier);
+  };
+  element.addEventListener('touchstart', start, { passive: false });
+  element.addEventListener('touchend', end);
+  element.addEventListener('touchcancel', end);
+}
 
 export function bindControls(
   element: HTMLElement,
@@ -98,6 +137,15 @@ export function bindControls(
   fireReleaseHandler = (id) => {
     controls.pointerUp(id);
   };
+  laserTouchHandler = (id, x, y) => {
+    if (isUiOpen()) return;
+    if (controls.fireId === id || controls.onFireButton(x, y)) return;
+    controls.claimLaser(id, x, y);
+  };
+
+  const syncLiveTouches = (event: TouchEvent) => {
+    controls.syncTouches(Array.from(event.touches, (touch) => touch.identifier));
+  };
 
   const onTouchStart = (event: TouchEvent) => {
     if (isUiOpen()) {
@@ -113,6 +161,11 @@ export function bindControls(
       if (onFireZone) {
         controls.claimFire(touch.identifier, point.x, point.y, ship.x, ship.y);
         play = true;
+        continue;
+      }
+      const onLaserZone = laserZone(touch.target) || (event.changedTouches.length === 1 && laserZone(event.target));
+      if (onLaserZone && controls.fireId !== touch.identifier && !controls.onFireButton(point.x, point.y)) {
+        controls.claimLaser(touch.identifier, point.x, point.y);
         continue;
       }
       const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
@@ -134,25 +187,31 @@ export function bindControls(
       }
     }
     if (cancel && event.cancelable) event.preventDefault();
+    syncLiveTouches(event);
   };
 
   const onTouchMove = (event: TouchEvent) => {
-    if (isUiOpen()) return;
+    if (isUiOpen()) {
+      syncLiveTouches(event);
+      return;
+    }
     if (event.cancelable) event.preventDefault();
     const touches = event.changedTouches.length > 0 ? event.changedTouches : event.touches;
     for (const touch of Array.from(touches)) {
       const point = local(touch.clientX, touch.clientY);
       controls.pointerMove(touch.identifier, point.x, point.y);
     }
+    syncLiveTouches(event);
   };
 
   const onTouchEnd = (event: TouchEvent) => {
     // Cancelling touchend suppresses the click mobile browsers send to a button.
     const onUi = uiNode(event.target);
     const onSlot = slotIndex(event.target) != null;
-    if (!isUiOpen() && (!onUi || onSlot) && event.cancelable) event.preventDefault();
-    if (isUiOpen()) return;
+    if (!isUiOpen() && event.type !== 'touchcancel' && (!onUi || onSlot) && event.cancelable) event.preventDefault();
     for (const touch of Array.from(event.changedTouches)) controls.pointerUp(touch.identifier);
+    // A cancel often arrives with no remaining touches. Drop anything the browser no longer lists.
+    syncLiveTouches(event);
   };
 
   const onPointerDown = (event: PointerEvent) => {
@@ -220,7 +279,10 @@ export function bindControls(
   };
 
   const onContext = (event: Event) => event.preventDefault();
-  const onBlur = () => controls.clearTransient();
+  const releaseAll = () => controls.clearTransient();
+  const onBlur = () => releaseAll();
+  const onVisibility = () => releaseAll();
+  const onPageHide = () => releaseAll();
 
   const touchOptions: AddEventListenerOptions = { capture: true, passive: false };
   window.addEventListener('touchstart', onTouchStart, touchOptions);
@@ -235,10 +297,13 @@ export function bindControls(
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('contextmenu', onContext);
   window.addEventListener('blur', onBlur);
+  window.addEventListener('pagehide', onPageHide);
+  document.addEventListener('visibilitychange', onVisibility);
 
   return () => {
     fireTouchHandler = null;
     fireReleaseHandler = null;
+    laserTouchHandler = null;
     window.removeEventListener('touchstart', onTouchStart, touchOptions);
     window.removeEventListener('touchmove', onTouchMove, touchOptions);
     window.removeEventListener('touchend', onTouchEnd, touchOptions);
@@ -251,5 +316,7 @@ export function bindControls(
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('contextmenu', onContext);
     window.removeEventListener('blur', onBlur);
+    window.removeEventListener('pagehide', onPageHide);
+    document.removeEventListener('visibilitychange', onVisibility);
   };
 }

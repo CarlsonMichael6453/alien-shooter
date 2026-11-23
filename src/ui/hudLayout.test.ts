@@ -10,6 +10,7 @@ import {
   defaultLayout,
   elementBounds,
   gearRect,
+  laserStickRect,
   pauseRect,
   inventoryRects,
   loadLayout,
@@ -153,5 +154,17 @@ describe('hud layout', () => {
     assert.equal(parseControlScheme('drag'), 'drag');
     assert.equal(parseControlScheme('joystick'), 'joystick');
     assert.equal(parseControlScheme('nope'), 'drag');
+  });
+
+  it('places the laser stick clear of the fire button, the slots, and the bottom edge', () => {
+    const safari: Field = { width: 390, height: 664, top: 0, bottom: 0 };
+    const stick = laserStickRect(safari);
+    const layout = defaultLayout(safari);
+    const fire = elementBounds(layout.elements.find((element) => element.id === 'fire')!, safari, 1);
+    const slots = elementBounds(layout.elements.find((element) => element.id === 'inventory')!, safari, 3);
+    assert.ok(safari.height - (stick.y + stick.h) >= FIRE_BOTTOM_CLEARANCE - 0.5);
+    assert.equal(overlaps(stick, fire), false);
+    assert.equal(overlaps(stick, slots), false);
+    assert.ok(stick.x + stick.w < fire.x);
   });
 });

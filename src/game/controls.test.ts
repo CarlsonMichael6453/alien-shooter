@@ -230,6 +230,71 @@ describe('two-finger controls', () => {
     assert.equal(controls.moveId, null);
   });
 
+  it('drops fingers the browser no longer lists so a later power tap still lands', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    controls.setInventoryRects([{ x: 300, y: 400, w: 46, h: 46 }]);
+    controls.setActionRects(null, { x: 40, y: 500, w: 80, h: 80 });
+    controls.pointerDown(1, 20, 100, 100, 300);
+    controls.pointerDown(2, 60, 540, 100, 300);
+    assert.equal(controls.moveId, 1);
+    assert.equal(controls.fireId, 2);
+    controls.syncTouches([2]);
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.fireId, 2);
+    controls.syncTouches([]);
+    assert.equal(controls.fireId, null);
+    assert.equal(controls.pointerDown(1, 320, 420, 100, 300), 'power');
+    assert.equal(controls.consumePower(), 0);
+  });
+
+  it('lets a repeated tap use a shield after a finger was never released', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    controls.setInventoryRects([{ x: 300, y: 400, w: 46, h: 46 }]);
+    controls.setActionRects(null, { x: 300, y: 520, w: 80, h: 80 });
+    assert.equal(controls.pointerDown(1, 30, 200, 100, 300), 'play');
+    assert.equal(controls.moveId, 1);
+    assert.equal(controls.pointerDown(1, 320, 420, 100, 300), 'power');
+    assert.equal(controls.moveId, null);
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.pointerDown(1, 320, 420, 100, 300), 'power');
+    assert.equal(controls.consumePower(), 0);
+  });
+
+  it('aims the laser with its own finger while steering and firing', () => {
+    const controls = new Controls();
+    controls.setScheme('drag');
+    const laser = { x: 16, y: 360, w: 92, h: 92 };
+    const fire = { x: 300, y: 520, w: 80, h: 80 };
+    controls.setLaserRect(laser);
+    controls.setActionRects(null, fire);
+    controls.setInventoryRects([{ x: 334, y: 466, w: 46, h: 46 }]);
+    assert.equal(controls.pointerDown(1, 40, 200, 180, 400), 'play');
+    assert.equal(controls.pointerDown(2, fire.x + 20, fire.y + 30, 180, 400), 'play');
+    assert.equal(controls.pointerDown(3, laser.x + 70, laser.y + 30, 180, 400), 'play');
+    controls.pointerMove(1, 80, 220);
+    const frame = controls.frame();
+    assert.equal(frame.moveActive, true);
+    assert.equal(frame.firing, true);
+    assert.equal(frame.laserAimActive, true);
+    assert.ok(frame.laserAimX > 10);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.moveId, 1);
+    assert.equal(controls.laserId, 3);
+    controls.pointerUp(3);
+    const released = controls.frame();
+    assert.equal(released.laserAimActive, false);
+    assert.equal(released.firing, true);
+    controls.claimLaser(2, fire.x + 10, fire.y + 10);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.laserId, null);
+    controls.pointerDown(4, 350, 480, 180, 400);
+    assert.equal(controls.consumePower(), 0);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.frame().firing, true);
+  });
+
   it('reports how far the firing finger has dragged', () => {
     const controls = new Controls();
     controls.setScheme('drag');

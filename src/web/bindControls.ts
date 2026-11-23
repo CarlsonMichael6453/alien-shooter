@@ -2,6 +2,8 @@ import type { Controls } from '../game/controls';
 
 export function markFireZone(_node: unknown): void {}
 
+export function markLaserZone(_node: unknown): void {}
+
 export function bindControls(
   _element: HTMLElement,
   _controls: Controls,

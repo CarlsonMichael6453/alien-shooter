@@ -68,6 +68,8 @@ export interface Missile {
   targetId: number | null;
   boss: boolean;
   smoke: number;
+  /** Seconds since launch. A missile that never hits or leaves is dropped so it cannot block the next power. */
+  age: number;
 }
 
 export interface EnemyBullet {
@@ -210,4 +212,8 @@ export interface Intent {
   hoverActive: boolean;
   hoverX: number;
   hoverY: number;
+  /** Finger offset from the laser stick center. Ignored unless laserAimActive. */
+  laserAimActive: boolean;
+  laserAimX: number;
+  laserAimY: number;
 }

@@ -19,6 +19,11 @@ describe('local high scores and ships', () => {
     const picked = selectShip(profile, 'ember');
     assert.equal(picked.shipId, 'ember');
     assert.equal(selectShip(FRESH_PROFILE, 'gold').shipId, 'classic');
+    const pink = SHIPS.find((ship) => ship.id === 'superpink')!;
+    assert.equal(pink.premium, true);
+    assert.equal(shipUnlocked(pink, 999999, 99), false);
+    assert.equal(selectShip(recordRun(FRESH_PROFILE, 60000, 20, 1), 'megadark').shipId, 'classic');
+    assert.equal(selectShip(FRESH_PROFILE, 'megadark', { owned: [], unlockAll: true }).shipId, 'megadark');
   });
 
   it('round-trips a saved profile and drops a bad ship id', async () => {
