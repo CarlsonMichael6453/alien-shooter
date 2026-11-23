@@ -47,6 +47,7 @@ export interface HudModel {
   laserAimX: number;
   laserAimY: number;
   laserHint: boolean;
+  shipId: string;
 }
 
 export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback' | 'pause' | 'scores' | 'ships' | 'privacy';
@@ -502,7 +503,7 @@ function ElementBody({
             },
           ]}
         >
-          <AbilityGlyph kind={kind} size={slot} />
+          <AbilityGlyph kind={kind} size={slot} shipId={model.shipId} />
         </View>
       ))}
     </View>

@@ -1,5 +1,6 @@
-import { SHIELD_HOT, SHIELD_NEON, hexPoints } from './abilityArt';
+import { hexPoints } from './abilityArt';
 import { shipStyle } from './ships';
+import { shipTheme, type ShipTheme } from './shipTheme';
 import { beamNose } from './logic';
 import { sectorTheme } from './sectors';
 import type { Boss, Enemy, GameState, Pickup } from './types';
@@ -43,24 +44,26 @@ export function paintGame(painter: Painter, state: GameState): void {
   }
   if (state.boss) drawBoss(painter, state.boss, theme.enemy, state.time);
 
-  if (state.bomb) drawBomb(painter, state.bomb);
+  const pack = shipTheme(state.shipId);
+  if (state.bomb) drawBomb(painter, state.bomb, pack);
   if (state.laserTimer > 0) drawLaser(painter, state);
-  if (state.blast && state.blast.age <= 1.7) drawBlast(painter, state.blast);
+  if (state.blast && state.blast.age <= 1.7) drawBlast(painter, state.blast, pack);
 
   for (const bullet of state.enemyBullets) {
     painter.fillCircle(bullet.x, bullet.y, bullet.r + 2, 'rgba(255, 120, 60, 0.35)');
     painter.fillCircle(bullet.x, bullet.y, bullet.r * 0.7, '#FFE0B0');
   }
-  for (const missile of state.missiles) drawMissile(painter, missile);
-  for (const bullet of state.bullets) drawBullet(painter, bullet);
+  for (const missile of state.missiles) drawMissile(painter, missile, pack);
+  for (const bullet of state.bullets) drawBullet(painter, bullet, pack);
 
-  if (state.wingmanTimer > 0) drawWingmen(painter, state);
+  if (state.wingmanTimer > 0) drawWingmen(painter, state, pack);
   drawShip(painter, state);
-  if (state.shieldHits > 0) drawShield(painter, state);
+  if (state.shieldHits > 0) drawShield(painter, state, pack);
   painter.restore();
 
   if (state.warpTimer > 0) {
-    painter.fillRect(0, 0, w, h, 'rgba(70, 120, 255, 0.16)');
+    const veil = pack.look === 'pink' ? 'rgba(255,80,160,0.16)' : pack.look === 'festive' ? 'rgba(80,160,255,0.14)' : pack.look === 'dark' ? 'rgba(40,0,0,0.22)' : 'rgba(70, 120, 255, 0.16)';
+    painter.fillRect(0, 0, w, h, veil);
   }
   if (state.hitFlash > 0) {
     painter.fillRect(0, 0, w, h, rgba('#FF3355', Math.min(0.38, state.hitFlash)));
@@ -109,8 +112,19 @@ function drawPlanet(
 function drawShip(painter: Painter, state: GameState): void {
   const blink = state.invuln > 0 && Math.sin(state.invuln * 28) < 0;
   const paint = shipStyle(state.shipId);
+  const look = shipTheme(state.shipId).look;
   painter.save();
   painter.translate(state.shipX, state.shipY);
+  if (look === 'festive') {
+    drawGingerbread(painter, blink);
+    painter.restore();
+    return;
+  }
+  if (look === 'dark') {
+    drawMenacing(painter, blink, state);
+    painter.restore();
+    return;
+  }
   if (blink) {
     painter.fillCircle(0, 2, 22, 'rgba(126,240,255,0.12)');
   }
@@ -172,6 +186,10 @@ function drawShip(painter: Painter, state: GameState): void {
   );
   painter.fillCircle(-20, 10, 2.2, paint.accent);
   painter.fillCircle(20, 10, 2.2, paint.accent);
+  if (look === 'pink') {
+    drawBow(painter, -28, 6, 1);
+    drawBow(painter, 28, 6, -1);
+  }
   painter.fillCircle(0, -2, 4.2, '#072033');
   painter.fillCircle(-1.2, -3.4, 1.5, 'rgba(184,246,255,0.95)');
 
@@ -202,15 +220,132 @@ function drawShip(painter: Painter, state: GameState): void {
   painter.restore();
 }
 
+function drawBow(painter: Painter, x: number, y: number, side: number): void {
+  painter.fillCircle(x - side * 4.2, y, 4.6, '#FF4FA3');
+  painter.fillCircle(x + side * 4.2, y, 4.6, '#FF7AB8');
+  painter.fillCircle(x, y, 2.4, '#FFF0F7');
+  painter.fillPolygon(
+    [
+      [x, y + 1],
+      [x - side * 5, y + 8],
+      [x - side * 1.5, y + 3],
+    ],
+    '#FF4FA3',
+  );
+  painter.fillPolygon(
+    [
+      [x, y + 1],
+      [x + side * 5, y + 8],
+      [x + side * 1.5, y + 3],
+    ],
+    '#FFB3D9',
+  );
+}
+
+function drawGingerbread(painter: Painter, blink: boolean): void {
+  const wall = blink ? 'rgba(196,138,85,0.4)' : '#C48A55';
+  const roof = blink ? 'rgba(122,72,40,0.4)' : '#7A4828';
+  painter.fillPolygon(
+    [
+      [0, -28],
+      [20, -6],
+      [-20, -6],
+    ],
+    roof,
+  );
+  painter.fillPolygon(
+    [
+      [0, -24],
+      [14, -8],
+      [-14, -8],
+    ],
+    '#FFF8F0',
+  );
+  painter.fillRoundRect(-16, -6, 32, 24, 3, wall);
+  painter.fillRect(-5, 4, 10, 14, '#6A3018');
+  painter.fillRect(-12, -1, 7, 7, '#FFF8F0');
+  painter.fillRect(5, -1, 7, 7, '#FFF8F0');
+  painter.fillCircle(-10, -16, 2.6, '#E23B3B');
+  painter.fillCircle(0, -18, 2.6, '#2F9E4F');
+  painter.fillCircle(10, -16, 2.6, '#F0C040');
+  painter.fillCircle(-14, 2, 2.2, '#E23B3B');
+  painter.fillCircle(14, 2, 2.2, '#2F9E4F');
+  painter.fillPolygon(
+    [
+      [-4, 16],
+      [0, 28],
+      [4, 16],
+    ],
+    '#FFE08A',
+  );
+}
+
+function drawMenacing(painter: Painter, blink: boolean, state: GameState): void {
+  const hull = blink ? 'rgba(20,20,24,0.45)' : '#141418';
+  painter.fillPolygon(
+    [
+      [-30, 10],
+      [-16, -2],
+      [-6, 14],
+      [-22, 20],
+      [-32, 16],
+    ],
+    '#0A0A0C',
+  );
+  painter.fillPolygon(
+    [
+      [30, 10],
+      [16, -2],
+      [6, 14],
+      [22, 20],
+      [32, 16],
+    ],
+    '#0A0A0C',
+  );
+  painter.fillPolygon(
+    [
+      [0, -28],
+      [14, 18],
+      [0, 8],
+      [-14, 18],
+    ],
+    hull,
+  );
+  painter.fillPolygon(
+    [
+      [0, -18],
+      [5, 12],
+      [0, 4],
+      [-5, 12],
+    ],
+    '#E10600',
+  );
+  painter.fillRect(-8, -2, 16, 2.2, '#FF2020');
+  painter.fillCircle(-22, 12, 1.8, '#E10600');
+  painter.fillCircle(22, 12, 1.8, '#E10600');
+  const flick = 0.72 + Math.sin(state.time * 42) * 0.28;
+  const length = (state.firing ? 24 : 13) * flick;
+  painter.fillPolygon(
+    [
+      [-4, 16],
+      [0, 16 + length],
+      [4, 16],
+    ],
+    '#8E0000',
+  );
+}
+
 function drawBullet(
   painter: Painter,
-  bullet: { x: number; y: number; vx: number; vy: number },
+  bullet: { id: number; x: number; y: number; vx: number; vy: number },
+  pack: ShipTheme,
 ): void {
   const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
   const ux = bullet.vx / speed;
   const uy = bullet.vy / speed;
   const px = -uy;
   const py = ux;
+  const color = pack.bullets[Math.abs(bullet.id) % 2];
   painter.fillPolygon(
     [
       [bullet.x + px * 2.2, bullet.y + py * 2.2],
@@ -218,10 +353,10 @@ function drawBullet(
       [bullet.x - ux * 14 - px * 1.2, bullet.y - uy * 14 - py * 1.2],
       [bullet.x - ux * 14 + px * 1.2, bullet.y - uy * 14 + py * 1.2],
     ],
-    '#F4FEFF',
+    color,
   );
-  painter.fillCircle(bullet.x, bullet.y, 9, 'rgba(126,240,255,0.28)');
-  painter.fillCircle(bullet.x, bullet.y, 4.2, '#F4FEFF');
+  painter.fillCircle(bullet.x, bullet.y, 9, pack.bulletGlow);
+  painter.fillCircle(bullet.x, bullet.y, 4.2, color);
 }
 
 function drawHealth(painter: Painter, enemy: Enemy): void {
@@ -264,15 +399,34 @@ function drawAmmoIcon(painter: Painter, amount: number): void {
   drawDigits(painter, String(amount), 0, 1, 2.3, '#E8FBFF');
 }
 
-function drawBomb(painter: Painter, bomb: { x: number; y: number; age: number; pulse: number }): void {
+function drawBomb(painter: Painter, bomb: { x: number; y: number; age: number; pulse: number }, pack: ShipTheme): void {
   const secondsLeft = Math.max(1, 3 - Math.floor(bomb.age));
   const scale = 1 + bomb.pulse * 0.28;
   painter.save();
   painter.translate(bomb.x, bomb.y);
-  painter.fillCircle(0, 0, 16 * scale, 'rgba(255,140,40,0.28)');
-  painter.fillCircle(0, 0, 9, '#FFB020');
-  painter.fillCircle(0, 0, 4, '#FFF6D8');
-  drawDigits(painter, String(secondsLeft), 0, 18, 2.1, '#FFE7B0');
+  if (pack.look === 'festive') {
+    painter.fillRoundRect(-10, -8, 20, 16, 2, '#C43B3B');
+    painter.fillRect(-2, -8, 4, 16, '#FFE08A');
+    painter.fillRect(-10, -2, 20, 4, '#FFE08A');
+    painter.fillCircle(0, -12, 3, '#2F9E4F');
+  } else if (pack.look === 'pink') {
+    painter.fillCircle(0, 2, 11 * scale, pack.bomb.body);
+    painter.fillCircle(-4, -2, 3.2, '#FF4FA3');
+    painter.fillCircle(4, -2, 3.2, '#FFB3D9');
+    painter.fillCircle(0, -1, 2, '#FFF0F7');
+    painter.fillRect(-1, -14, 2, 10, pack.bomb.fuse);
+    painter.fillCircle(0, -15, 2.4, pack.bomb.hot);
+  } else if (pack.look === 'dark') {
+    painter.fillCircle(0, 2, 11, '#101014');
+    painter.strokeCircle(0, 2, 11, '#E10600', 1.6);
+    painter.fillRect(-1, -12, 2, 10, '#4A0008');
+    painter.fillCircle(0, -13, 2.4, '#FF2020');
+  } else {
+    painter.fillCircle(0, 0, 16 * scale, 'rgba(255,140,40,0.28)');
+    painter.fillCircle(0, 0, 9, pack.bomb.body);
+    painter.fillCircle(0, 0, 4, pack.bomb.band);
+  }
+  drawDigits(painter, String(secondsLeft), 0, 18, 2.1, pack.bomb.band);
   painter.restore();
 }
 
@@ -310,7 +464,20 @@ function drawMushroomCloud(painter: Painter, scale: number, time: number): void 
 function drawBlast(
   painter: Painter,
   blast: { x: number; y: number; age: number; maxRadius: number },
+  pack: ShipTheme,
 ): void {
+  if (pack.look === 'pink') {
+    drawGlitter(painter, blast);
+    return;
+  }
+  if (pack.look === 'festive') {
+    drawConfetti(painter, blast);
+    return;
+  }
+  if (pack.look === 'dark') {
+    drawDarkBlast(painter, blast);
+    return;
+  }
   const age = blast.age;
   const grow = clamp01(age / 0.5);
   const radius = blast.maxRadius * (1 - (1 - grow) * (1 - grow));
@@ -348,7 +515,46 @@ function drawBlast(
   }
 }
 
+function drawGlitter(painter: Painter, blast: { x: number; y: number; age: number; maxRadius: number }): void {
+  const fade = clamp01(1 - blast.age / 1.4);
+  for (let i = 0; i < 28; i += 1) {
+    const angle = (i / 28) * Math.PI * 2 + blast.age;
+    const reach = blast.maxRadius * (0.2 + (i % 5) * 0.14) * clamp01(blast.age / 0.35);
+    const color = i % 3 === 0 ? '#FF4FA3' : i % 3 === 1 ? '#FFB3D9' : '#F4E8FF';
+    painter.fillCircle(blast.x + Math.cos(angle) * reach, blast.y + Math.sin(angle) * reach, 2 + (i % 4), rgba(color, 0.85 * fade));
+  }
+  painter.fillCircle(blast.x, blast.y, 18 * fade, rgba('#FFF0F8', 0.7 * fade));
+}
+
+function drawConfetti(painter: Painter, blast: { x: number; y: number; age: number; maxRadius: number }): void {
+  const fade = clamp01(1 - blast.age / 1.4);
+  const colors = ['#E23B3B', '#2F9E4F', '#F0C040', '#FFF8F0', '#7EC8FF'];
+  for (let i = 0; i < 26; i += 1) {
+    const angle = (i / 26) * Math.PI * 2;
+    const reach = blast.maxRadius * (0.25 + (i % 4) * 0.12) * clamp01(blast.age / 0.4);
+    painter.save();
+    painter.translate(blast.x + Math.cos(angle) * reach, blast.y + Math.sin(angle) * reach);
+    painter.rotate(angle + blast.age * 3);
+    if (i % 2 === 0) painter.fillRect(-3, -3, 6, 6, rgba(colors[i % colors.length], fade));
+    else painter.fillCircle(0, 0, 3.2, rgba('#FFF8F0', fade));
+    painter.restore();
+  }
+}
+
+function drawDarkBlast(painter: Painter, blast: { x: number; y: number; age: number; maxRadius: number }): void {
+  const fade = clamp01(1 - blast.age / 1.3);
+  const radius = blast.maxRadius * clamp01(blast.age / 0.45);
+  painter.fillCircle(blast.x, blast.y, radius * 0.7, rgba('#0A0A0C', 0.55 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.28, rgba('#E10600', 0.7 * fade));
+  painter.fillCircle(blast.x, blast.y, radius * 0.1, rgba('#FFD0D0', 0.8 * fade));
+}
+
 function drawLaser(painter: Painter, state: GameState): void {
+  const pack = shipTheme(state.shipId);
+  if (pack.look === 'festive') {
+    drawCandyCane(painter, state, pack);
+    return;
+  }
   const nose = beamNose(state);
   const angle = state.laserAngle;
   const length = Math.max(state.width, state.height) * 1.4;
@@ -371,14 +577,14 @@ function drawLaser(painter: Painter, state: GameState): void {
     );
   };
   const shimmer = Math.sin(state.time * 36) * 1.6;
-  band(15 * flicker, 'rgba(255,70,16,0.16)');
-  band(9 * flicker, 'rgba(255,52,18,0.55)');
+  band(15 * flicker, pack.laser.glow);
+  band(9 * flicker, pack.laser.body);
   painter.save();
   painter.translate(px * shimmer, py * shimmer);
-  band(6.4 * flicker, 'rgba(255,90,24,0.78)', 0.55);
+  band(6.4 * flicker, pack.laser.body, 0.55);
   painter.restore();
-  band(3.1 * flicker, '#FFE7A8', 0.4);
-  band(1.35, '#FFFFFF', 0.28);
+  band(3.1 * flicker, pack.laser.core, 0.4);
+  band(1.35, pack.laser.hot, 0.28);
 
   const steps = 9;
   for (let i = 1; i <= steps; i += 1) {
@@ -387,12 +593,12 @@ function drawLaser(painter: Painter, state: GameState): void {
     const side = i % 2 === 0 ? 1 : -1;
     const x = nose.x + dx * along + px * wave * side;
     const y = nose.y + dy * along + py * wave * side;
-    painter.fillCircle(x, y, 2.4 + (i % 3) * 0.7, i % 2 === 0 ? 'rgba(255,120,30,0.75)' : 'rgba(255,220,140,0.55)');
+    painter.fillCircle(x, y, 2.4 + (i % 3) * 0.7, i % 2 === 0 ? pack.laser.spark : pack.laser.core);
   }
 
-  painter.fillCircle(nose.x, nose.y, 16 * flicker, 'rgba(255,90,20,0.35)');
-  painter.fillCircle(nose.x, nose.y, 9 * flicker, 'rgba(255,190,90,0.8)');
-  painter.fillCircle(nose.x, nose.y, 4.2, '#FFFFFF');
+  painter.fillCircle(nose.x, nose.y, 16 * flicker, pack.laser.glow);
+  painter.fillCircle(nose.x, nose.y, 9 * flicker, pack.laser.core);
+  painter.fillCircle(nose.x, nose.y, 4.2, pack.laser.hot);
 
   for (const enemy of state.enemies) {
     const distance = pointLineDistance(enemy.x, enemy.y, nose.x, nose.y, tipX, tipY);
@@ -497,48 +703,119 @@ function drawBoss(painter: Painter, boss: Boss, tint: string, time: number): voi
   }
 }
 
-function drawShield(painter: Painter, state: GameState): void {
+function drawCandyCane(painter: Painter, state: GameState, pack: ShipTheme): void {
+  const nose = beamNose(state);
+  const angle = state.laserAngle;
+  const length = Math.max(state.width, state.height) * 1.2;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const px = -dy;
+  const py = dx;
+  const steps = 26;
+  for (let i = 0; i < steps; i += 1) {
+    const t0 = i / steps;
+    const t1 = (i + 1) / steps;
+    const side0 = Math.sin(t0 * 16 + state.time * 6) * 8;
+    const side1 = Math.sin(t1 * 16 + state.time * 6) * 8;
+    const x0 = nose.x + dx * t0 * length + px * side0;
+    const y0 = nose.y + dy * t0 * length + py * side0;
+    const x1 = nose.x + dx * t1 * length + px * side1;
+    const y1 = nose.y + dy * t1 * length + py * side1;
+    const color = i % 2 === 0 ? pack.laser.body : pack.laser.core;
+    painter.fillPolygon(
+      [
+        [x0 + px * 3.2, y0 + py * 3.2],
+        [x0 - px * 3.2, y0 - py * 3.2],
+        [x1 - px * 3.2, y1 - py * 3.2],
+        [x1 + px * 3.2, y1 + py * 3.2],
+      ],
+      color,
+    );
+  }
+  painter.fillCircle(nose.x, nose.y, 7, pack.laser.hot);
+}
+
+function drawShield(painter: Painter, state: GameState, pack: ShipTheme): void {
   const flicker = 0.72 + Math.sin(state.time * 8) * 0.18;
   const outer = hexPoints(state.shipX, state.shipY, 42);
   const inner = hexPoints(state.shipX, state.shipY, 33);
-  painter.strokePolygon(outer, rgba(SHIELD_NEON, 0.34 * flicker), 11);
-  painter.strokePolygon(outer, rgba(SHIELD_NEON, flicker), 2.6);
-  painter.strokePolygon(inner, rgba(SHIELD_HOT, 0.92 * flicker), 1.8);
+  painter.strokePolygon(outer, rgba(pack.shield.neon, 0.34 * flicker), 11);
+  painter.strokePolygon(outer, rgba(pack.shield.neon, flicker), 2.6);
+  painter.strokePolygon(inner, rgba(pack.shield.hot, 0.92 * flicker), 1.8);
 }
 
-function drawWingmen(painter: Painter, state: GameState): void {
+function drawWingmen(painter: Painter, state: GameState, pack: ShipTheme): void {
   for (const side of [-1, 1]) {
     const x = state.shipX + side * 36;
     const y = state.shipY + 4;
+    if (pack.look === 'festive') {
+      painter.fillCircle(x, y + 2, 6, '#F3D2A4');
+      painter.fillPolygon(
+        [
+          [x, y - 12],
+          [x + side * 7, y],
+          [x - side * 7, y],
+        ],
+        pack.wingman.trim,
+      );
+      painter.fillCircle(x, y - 8, 2.2, '#FFF8F0');
+      painter.fillCircle(x - 2, y + 1, 0.8, '#1A120C');
+      painter.fillCircle(x + 2, y + 1, 0.8, '#1A120C');
+      painter.fillRect(x - 3, y + 6, 6, 5, pack.wingman.body);
+      continue;
+    }
     painter.fillPolygon(
       [
         [x, y - 12],
         [x + side * 8, y + 6],
         [x - side * 4, y + 4],
       ],
-      '#D5E7F5',
+      pack.wingman.body,
     );
-    painter.fillCircle(x, y + 8, 2.4, '#7EF0FF');
+    painter.fillCircle(x, y + 8, 2.4, pack.wingman.trim);
+    if (pack.look === 'pink') drawBow(painter, x, y - 12, side);
   }
 }
 
-function drawMissile(painter: Painter, missile: { x: number; y: number; angle: number }): void {
+function drawMissile(painter: Painter, missile: { x: number; y: number; angle: number }, pack: ShipTheme): void {
   const { x, y, angle } = missile;
   for (let i = 5; i >= 1; i -= 1) {
-    painter.fillCircle(x - Math.cos(angle) * i * 6, y - Math.sin(angle) * i * 6, 3.4 - i * 0.4, rgba('#D5DEE8', 0.1 + (6 - i) * 0.08));
+    painter.fillCircle(x - Math.cos(angle) * i * 6, y - Math.sin(angle) * i * 6, 3.4 - i * 0.4, rgba(pack.missile.trail, 0.12 + (6 - i) * 0.08));
   }
   painter.save();
   painter.translate(x, y);
   painter.rotate(angle + Math.PI / 2);
-  painter.fillPolygon(
-    [
-      [0, -10],
-      [4.2, 7],
-      [-4.2, 7],
-    ],
-    '#F0C14A',
-  );
-  painter.fillCircle(0, -6, 2.1, '#FFF4C8');
+  if (pack.look === 'festive') {
+    painter.fillPolygon(
+      [
+        [0, -12],
+        [6, -2],
+        [-6, -2],
+      ],
+      pack.missile.body,
+    );
+    painter.fillPolygon(
+      [
+        [0, -7],
+        [4.5, 2],
+        [-4.5, 2],
+      ],
+      pack.missile.core,
+    );
+    painter.fillRect(-1.4, 2, 2.8, 5, '#7A4828');
+    painter.fillCircle(0, -10, 1.6, pack.missile.tip);
+  } else {
+    painter.fillPolygon(
+      [
+        [0, -10],
+        [4.2, 7],
+        [-4.2, 7],
+      ],
+      pack.missile.body,
+    );
+    painter.fillCircle(0, -6, 2.1, pack.missile.core);
+    painter.fillCircle(0, 4, 1.6, pack.missile.tip);
+  }
   painter.restore();
 }
 

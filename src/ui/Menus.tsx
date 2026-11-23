@@ -89,13 +89,39 @@ export function ScoreBoard({ profile, onClose }: { profile: Profile; onClose: ()
   );
 }
 
+function ShipPreview({ shipId, wing, hull }: { shipId: string; wing: string; hull: string }) {
+  if (shipId === 'festive') {
+    return (
+      <View style={styles.preview}>
+        <View style={[styles.roof, { borderBottomColor: '#7A4828' }]} />
+        <View style={[styles.house, { backgroundColor: wing }]} />
+        <View style={styles.gum} />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.preview}>
+      <View style={[styles.previewWing, { backgroundColor: wing, left: 2 }]} />
+      <View style={[styles.previewWing, { backgroundColor: wing, right: 2 }]} />
+      <View style={[styles.previewHull, { backgroundColor: hull }]} />
+      {shipId === 'superpink' ? (
+        <>
+          <View style={[styles.bow, { left: 1, backgroundColor: '#FF4FA3' }]} />
+          <View style={[styles.bow, { right: 1, backgroundColor: '#FFB3D9' }]} />
+        </>
+      ) : null}
+      {shipId === 'megadark' ? <View style={styles.darkEye} /> : null}
+    </View>
+  );
+}
+
 export function ShipSelect({ profile, onSelect, onClose }: { profile: Profile; onSelect: (id: string) => void; onClose: () => void }) {
   return (
     <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.wrap, styles.scrim]}>
       <View style={styles.card}>
         <Text style={styles.kicker}>SAME HANDLING</Text>
         <Text style={styles.menuTitle}>SHIPS</Text>
-        <Text style={styles.body}>Colors only. Every ship flies and shoots the same.</Text>
+        <Text style={styles.body}>Every ship handles the same. SuperPink, Festive, and MegaDark also restyle shots and power-ups.</Text>
         <ScrollView style={styles.list}>
           {SHIPS.map((ship) => {
             const open = shipUnlocked(ship, profile.bestScore, profile.bestWave);
@@ -110,7 +136,7 @@ export function ShipSelect({ profile, onSelect, onClose }: { profile: Profile; o
                 onPress={() => onSelect(ship.id)}
                 style={[styles.ship, selected ? styles.shipOn : null, open ? null : styles.shipLocked]}
               >
-                <View style={[styles.swatch, { backgroundColor: ship.wing }]} />
+                <ShipPreview shipId={ship.id} wing={ship.wing} hull={ship.hull} />
                 <View style={styles.shipCopy}>
                   <Text style={styles.shipName}>{ship.name}</Text>
                   <Text style={styles.shipNeed}>{!open ? need : selected ? 'Selected' : 'Unlocked'}</Text>
@@ -250,6 +276,62 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
+  },
+  preview: {
+    width: 36,
+    height: 36,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  previewHull: {
+    width: 10,
+    height: 22,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+  },
+  previewWing: {
+    position: 'absolute',
+    bottom: 6,
+    width: 12,
+    height: 8,
+    borderRadius: 2,
+  },
+  bow: {
+    position: 'absolute',
+    bottom: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  roof: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  house: {
+    width: 18,
+    height: 12,
+    borderRadius: 2,
+  },
+  gum: {
+    position: 'absolute',
+    top: 6,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#E23B3B',
+  },
+  darkEye: {
+    position: 'absolute',
+    bottom: 14,
+    width: 8,
+    height: 2,
+    backgroundColor: '#E10600',
   },
   shipCopy: {
     flex: 1,

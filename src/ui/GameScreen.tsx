@@ -71,6 +71,7 @@ const INITIAL_HUD: HudModel = {
   laserAimX: 0,
   laserAimY: 0,
   laserHint: false,
+  shipId: 'classic',
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
@@ -449,6 +450,7 @@ export function GameScreen() {
           control.laserAimX,
           control.laserAimY,
           laserHintOnRef.current && state.laserTimer > 0,
+          state.shipId,
         );
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
@@ -661,6 +663,7 @@ function publishHud(
   laserAimX: number,
   laserAimY: number,
   laserHint: boolean,
+  shipId: string,
 ): void {
   const powerOn =
     state.rapidTimer > 0 ||
@@ -708,7 +711,8 @@ function publishHud(
     prev.fireHeld === fireHeld &&
     Math.abs(prev.laserAimX - laserAimX) < 1 &&
     Math.abs(prev.laserAimY - laserAimY) < 1 &&
-    prev.laserHint === laserHint
+    prev.laserHint === laserHint &&
+    prev.shipId === shipId
   ) {
     return;
   }
@@ -738,6 +742,7 @@ function publishHud(
     laserAimX,
     laserAimY,
     laserHint,
+    shipId,
   };
   hudRef.current = next;
   setHud(next);
