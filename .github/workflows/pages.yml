@@ -45,11 +45,21 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
 
       - name: Upload web export
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: web-export
           path: dist
           if-no-files-found: error
+
+      # Pages looks up an artifact named github-pages. Uploading it here, and
+      # not again in the deploy job, leaves one artifact for that lookup.
+      # Uploading it in the deploy job raced the list and only web-export was visible.
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -59,17 +69,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download web export
-        uses: actions/download-artifact@v4
-        with:
-          name: web-export
-          path: dist
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
