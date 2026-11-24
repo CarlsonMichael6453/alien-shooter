@@ -152,11 +152,23 @@ export class Controls {
     this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
   }
 
+  /** The aim stick is live only while a laser rect is installed. */
+  laserArmed(): boolean {
+    return this.laserRect != null;
+  }
+
+  /** True when the point is on the aim stick and not on the fire button. */
+  onLaserStick(x: number, y: number): boolean {
+    return this.laserArmed() && this.inside(this.laserRect, x, y) && !this.onFireButton(x, y);
+  }
+
   /**
-   * This finger is on the laser stick. It never takes the fire button or a slot.
+   * This finger is on the laser stick. It never takes the fire button, a slot,
+   * or any touch while the laser is off.
    */
   claimLaser(id: number, x: number, y: number): void {
     if (id < 0) return;
+    if (!this.laserArmed()) return;
     if (this.fireId === id || this.onFireButton(x, y)) return;
     if (this.hitsInventory(x, y) >= 0) return;
     if (this.laserId != null && this.laserId !== id) return;

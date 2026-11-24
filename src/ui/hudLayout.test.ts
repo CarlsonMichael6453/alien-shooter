@@ -167,5 +167,9 @@ describe('hud layout', () => {
     assert.equal(overlaps(stick, slots), false);
     assert.ok(stick.x >= safari.width / 2);
     assert.ok(stick.y + stick.h <= slots.y + 0.5);
+    const cramped: Field = { width: 320, height: 280, top: 40, bottom: 0 };
+    const crampedStick = laserStickRect(cramped);
+    const crampedFire = elementBounds(defaultLayout(cramped).elements.find((element) => element.id === 'fire')!, cramped, 1);
+    assert.equal(overlaps(crampedStick, crampedFire), false);
   });
 });

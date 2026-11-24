@@ -92,11 +92,17 @@ export function laserStickRect(field: Field, layout?: HudLayout | null): HudRect
   let y = topLimit - gap - size;
   const minTop = Math.max(EDGE, field.top);
   if (y < minTop) y = minTop;
-  const rect = { x, y, w: size, h: size };
+  let rect = { x, y, w: size, h: size };
   if (rectsOverlap(rect, fire) || rectsOverlap(rect, slots)) {
     x = Math.max(EDGE, Math.min(fire.x, slots.x) - gap - size);
+    rect = { x, y, w: size, h: size };
   }
-  return { x, y, w: size, h: size };
+  // A clamped stick can still sit on the fire button. Keep its hit box off that button.
+  if (rectsOverlap(rect, fire)) {
+    const above = fire.y - gap - size;
+    rect = above >= minTop ? { ...rect, y: above } : { ...rect, x: Math.max(EDGE, fire.x - gap - size) };
+  }
+  return rect;
 }
 
 function rectsOverlap(a: HudRect, b: HudRect): boolean {
