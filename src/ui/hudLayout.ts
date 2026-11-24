@@ -80,7 +80,7 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
 /** Small aim stick on the right, above the fire button and the power-up slots. */
 export function laserStickRect(field: Field, layout?: HudLayout | null): HudRect {
   const size = LASER_STICK_SIZE;
-  const gap = 12;
+  const gap = 16;
   const source = layout ?? defaultLayout(field);
   const fireEl = source.elements.find((element) => element.id === 'fire');
   const slotEl = source.elements.find((element) => element.id === 'inventory');
@@ -92,11 +92,17 @@ export function laserStickRect(field: Field, layout?: HudLayout | null): HudRect
   let y = topLimit - gap - size;
   const minTop = Math.max(EDGE, field.top);
   if (y < minTop) y = minTop;
-  const rect = { x, y, w: size, h: size };
+  let rect = { x, y, w: size, h: size };
   if (rectsOverlap(rect, fire) || rectsOverlap(rect, slots)) {
-    x = Math.max(EDGE, Math.min(fire.x, slots.x) - gap - size);
+    y = Math.max(minTop, Math.min(fire.y, slots.y) - gap - size);
+    rect = { x, y, w: size, h: size };
   }
-  return { x, y, w: size, h: size };
+  if (rectsOverlap(rect, fire)) {
+    x = Math.max(EDGE, fire.x - gap - size);
+    y = Math.max(minTop, Math.min(y, fire.y - gap - size));
+    rect = { x, y, w: size, h: size };
+  }
+  return rect;
 }
 
 function rectsOverlap(a: HudRect, b: HudRect): boolean {

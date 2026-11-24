@@ -98,6 +98,12 @@ export class Controls {
 
   setLaserRect(rect: BombRect | null): void {
     this.laserRect = rect;
+    if (!rect && this.laserId != null) this.pointerUp(this.laserId);
+  }
+
+  /** The stick can take a finger only while a laser rect is armed. */
+  laserArmed(): boolean {
+    return this.laserRect != null;
   }
 
   setInventoryRects(rects: BombRect[]): void {
@@ -156,6 +162,7 @@ export class Controls {
    * This finger is on the laser stick. It never takes the fire button or a slot.
    */
   claimLaser(id: number, x: number, y: number): void {
+    if (!this.laserRect) return;
     if (id < 0) return;
     if (this.fireId === id || this.onFireButton(x, y)) return;
     if (this.hitsInventory(x, y) >= 0) return;
