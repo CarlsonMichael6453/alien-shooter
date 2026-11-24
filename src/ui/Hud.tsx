@@ -191,7 +191,6 @@ export function Overlay({
             );
           })
         : null}
-      {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
       {playing && model.laserTimer > 0 ? <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} /> : null}
 
       {playing && ui === 'none' && cue ? (
@@ -205,6 +204,8 @@ export function Overlay({
           guide={model.guideOn ? { x: model.guideX, y: model.guideY } : null}
         />
       ) : null}
+
+      {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
 
       {playing && ui === 'none' && model.hint && !cue ? (
         <Text pointerEvents="none" style={[styles.hint, { bottom: hintBottom(layout, field, model) }]}>{model.hint}</Text>
@@ -562,11 +563,11 @@ function TutorialPrompt({
     const arrowTop = upper ? guide.y + 32 : guide.y - 36;
     return (
       <View pointerEvents="none" style={styles.overlay}>
-        <View style={[styles.prompt, { top: textTop }]}>
-          <Text style={styles.promptTitle}>{title}</Text>
-          {detail ? <Text style={styles.promptDetail}>{detail}</Text> : null}
+        <View pointerEvents="none" style={[styles.prompt, { top: textTop }]}>
+          <Text pointerEvents="none" style={styles.promptTitle}>{title}</Text>
+          {detail ? <Text pointerEvents="none" style={styles.promptDetail}>{detail}</Text> : null}
         </View>
-        <Animated.View
+        <Animated.View pointerEvents="none"
           style={[
             styles.arrow,
             {
@@ -590,8 +591,8 @@ function TutorialPrompt({
     const arrowTop = pointDown ? Math.max(field.top + 8, bounds.y - 28) : bounds.y + bounds.h + 6;
     return (
       <View pointerEvents="none" style={styles.overlay}>
-        <Text style={[styles.powerText, { top: Math.max(field.top + 28, field.height * 0.3) }]}>Tap the icon to use it</Text>
-        <Animated.View
+        <Text pointerEvents="none" style={[styles.powerText, { top: Math.max(field.top + 28, field.height * 0.3) }]}>Tap the icon to use it</Text>
+        <Animated.View pointerEvents="none"
           style={[
             styles.arrow,
             {
@@ -622,9 +623,9 @@ function TutorialPrompt({
     cue === 'ammo' ? '' : cue === 'pickup' ? 'Fly into the glowing badge' : scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
   return (
     <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
-      <Text style={styles.promptTitle}>{title}</Text>
-      {detail ? <Text style={styles.promptDetail}>{detail}</Text> : null}
-      <Animated.View style={{ marginTop: 14, transform: [{ translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-6, 36] }) }] }}>
+      <Text pointerEvents="none" style={styles.promptTitle}>{title}</Text>
+      {detail ? <Text pointerEvents="none" style={styles.promptDetail}>{detail}</Text> : null}
+      <Animated.View pointerEvents="none" style={{ marginTop: 14, transform: [{ translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-6, 36] }) }] }}>
         <Finger />
       </Animated.View>
     </View>
@@ -1004,7 +1005,7 @@ const styles = StyleSheet.create({
   },
   fireZone: {
     position: 'absolute',
-    zIndex: 30,
+    zIndex: 40,
     backgroundColor: 'transparent',
   },
   laserStick: {

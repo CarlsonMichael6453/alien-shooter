@@ -167,5 +167,6 @@ describe('hud layout', () => {
     assert.equal(overlaps(stick, slots), false);
     assert.ok(stick.x >= safari.width / 2);
     assert.ok(stick.y + stick.h <= slots.y + 0.5);
+    assert.ok(fire.y - (stick.y + stick.h) >= 16);
   });
 });

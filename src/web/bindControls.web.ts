@@ -75,7 +75,7 @@ export function markFireZone(node: unknown): void {
 
 let fireTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
 let fireReleaseHandler: ((id: number) => void) | null = null;
-let laserTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
+let laserTouchHandler: ((id: number, x: number, y: number) => 'laser' | 'ignore') | null = null;
 
 export function markLaserZone(node: unknown): void {
   const element = node as HTMLElement | null;
@@ -93,13 +93,14 @@ export function markLaserZone(node: unknown): void {
     };
   };
   const start = (event: TouchEvent) => {
-    event.preventDefault();
     const handler = laserTouchHandler;
     if (!handler) return;
+    let aim = false;
     for (const touch of Array.from(event.changedTouches)) {
       const point = localPoint(touch);
-      handler(touch.identifier, point.x, point.y);
+      if (handler(touch.identifier, point.x, point.y) === 'laser') aim = true;
     }
+    if (aim && event.cancelable) event.preventDefault();
   };
   const end = (event: TouchEvent) => {
     const handler = fireReleaseHandler;
@@ -138,13 +139,20 @@ export function bindControls(
     controls.pointerUp(id);
   };
   laserTouchHandler = (id, x, y) => {
-    if (isUiOpen()) return;
-    if (controls.fireId === id || controls.onFireButton(x, y)) return;
+    if (isUiOpen() || !controls.laserArmed() || controls.fireId === id || controls.onFireButton(x, y)) return 'ignore';
     controls.claimLaser(id, x, y);
+    return controls.laserId === id ? 'laser' : 'ignore';
   };
 
   const syncLiveTouches = (event: TouchEvent) => {
-    controls.syncTouches(Array.from(event.touches, (touch) => touch.identifier));
+    const ids = Array.from(event.touches, (touch) => touch.identifier);
+    // A touchstart can list the new finger only in changedTouches. Dropping
+    // every other id here releases the fire finger the moment the stick or a
+    // drag receives the next touch.
+    if (event.type === 'touchstart') {
+      for (const touch of Array.from(event.changedTouches)) ids.push(touch.identifier);
+    }
+    controls.syncTouches(ids);
   };
 
   const onTouchStart = (event: TouchEvent) => {
@@ -158,13 +166,15 @@ export function bindControls(
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
       const onFireZone = fireZone(touch.target) || (event.changedTouches.length === 1 && fireZone(event.target));
-      if (onFireZone) {
+      // Coordinates win over the element Safari names. A stick or a tutorial
+      // layer above the corner must not take the fire button.
+      if (onFireZone || controls.onFireButton(point.x, point.y)) {
         controls.claimFire(touch.identifier, point.x, point.y, ship.x, ship.y);
         play = true;
         continue;
       }
       const onLaserZone = laserZone(touch.target) || (event.changedTouches.length === 1 && laserZone(event.target));
-      if (onLaserZone && controls.fireId !== touch.identifier && !controls.onFireButton(point.x, point.y)) {
+      if (controls.laserArmed() && onLaserZone && controls.fireId !== touch.identifier) {
         controls.claimLaser(touch.identifier, point.x, point.y);
         continue;
       }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DRAG_FOLLOW } from './constants';
 import { Controls, STICK_DEAD_ZONE, stickResponse } from './controls';
+import { defaultLayout, elementBounds, laserStickRect } from '../ui/hudLayout';
 
 describe('two-finger controls', () => {
   it('treats the first touch as move and the second as fire', () => {
@@ -293,6 +294,53 @@ describe('two-finger controls', () => {
     assert.equal(controls.consumePower(), 0);
     assert.equal(controls.fireId, 2);
     assert.equal(controls.frame().firing, true);
+  });
+
+  it('keeps the fire button while the right-side laser stick is armed and a finger drags', () => {
+    const field = { width: 390, height: 664, top: 0, bottom: 0 };
+    const stick = laserStickRect(field, defaultLayout(field));
+    const fire = elementBounds(defaultLayout(field).elements.find((element) => element.id === 'fire')!, field, 1);
+    assert.equal(stick.x < fire.x + fire.w && stick.x + stick.w > fire.x && stick.y < fire.y + fire.h && stick.y + stick.h > fire.y, false);
+    assert.ok(fire.y - (stick.y + stick.h) >= 16);
+    const controls = new Controls();
+    controls.setScheme('drag');
+    controls.setLaserRect(null);
+    assert.equal(controls.laserArmed(), false);
+    controls.pointerDown(7, stick.x + 20, stick.y + 20, 180, 500);
+    assert.equal(controls.laserId, null);
+    controls.pointerUp(7);
+    controls.setLaserRect(stick);
+    assert.equal(controls.laserArmed(), true);
+    controls.setActionRects(null, fire);
+    controls.pointerDown(1, 40, 420, 180, 500);
+    controls.pointerDown(2, fire.x + 24, fire.y + 30, 180, 500);
+    controls.pointerDown(3, stick.x + 60, stick.y + 30, 180, 500);
+    controls.pointerMove(1, 70, 400);
+    let frame = controls.frame();
+    assert.equal(frame.moveActive, true);
+    assert.equal(frame.firing, true);
+    assert.equal(frame.laserAimActive, true);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.laserId, 3);
+    controls.claimLaser(2, fire.x + 8, fire.y + 8);
+    assert.equal(controls.fireId, 2);
+    assert.equal(controls.laserId, 3);
+    controls.pointerUp(2);
+    assert.equal(controls.frame().firing, false);
+    controls.pointerDown(4, fire.x + 16, fire.y + 20, 180, 500);
+    frame = controls.frame();
+    assert.equal(frame.firing, true);
+    assert.equal(frame.moveActive, true);
+    assert.equal(controls.fireId, 4);
+    controls.syncTouches([1, 3]);
+    assert.equal(controls.frame().firing, false);
+    assert.equal(controls.moveId, 1);
+    assert.equal(controls.laserId, 3);
+    controls.setLaserRect(null);
+    assert.equal(controls.laserArmed(), false);
+    assert.equal(controls.laserId, null);
+    controls.claimLaser(5, stick.x + 10, stick.y + 10);
+    assert.equal(controls.laserId, null);
   });
 
   it('reports how far the firing finger has dragged', () => {
