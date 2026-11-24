@@ -21,3 +21,21 @@ export function classifyTouch(
   if (targetIsUi) return { play: false, cancel: false, dropPlayPointer: true };
   return { play: true, cancel: true, dropPlayPointer: false };
 }
+
+export type TouchSurface = 'fire' | 'laser' | 'other';
+
+/**
+ * Safari can report a touch on the fire button as a hit on the laser stick,
+ * because the stick sits just above that button. The button wins by finger
+ * position. The stick receives a touch only while the laser is armed.
+ */
+export function resolveTouchSurface(input: {
+  target: TouchSurface;
+  onFireButton: boolean;
+  laserArmed: boolean;
+  onLaserStick: boolean;
+}): 'fire' | 'laser' | 'other' {
+  if (input.onFireButton || input.target === 'fire') return 'fire';
+  if (input.laserArmed && (input.target === 'laser' || input.onLaserStick)) return 'laser';
+  return 'other';
+}

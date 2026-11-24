@@ -289,6 +289,10 @@ describe('two-finger controls', () => {
     controls.claimLaser(2, fire.x + 10, fire.y + 10);
     assert.equal(controls.fireId, 2);
     assert.equal(controls.laserId, null);
+    controls.setLaserRect(null);
+    controls.claimLaser(8, 40, 200);
+    assert.equal(controls.laserId, null);
+    assert.equal(controls.fireId, 2);
     controls.pointerDown(4, 350, 480, 180, 400);
     assert.equal(controls.consumePower(), 0);
     assert.equal(controls.fireId, 2);

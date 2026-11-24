@@ -20,7 +20,7 @@ import { FeedbackForm, RatingPrompt } from './FeedbackForm';
 import { MainMenu, PauseMenu, PrivacyPage, ScoreBoard, ShipSelect } from './Menus';
 import type { Entitlements } from '../game/premium';
 import type { Profile } from './profile';
-import { markFireZone, markLaserZone } from '../web/bindControls';
+import { markFireZone, markIgnoresPointer, markLaserZone } from '../web/bindControls';
 
 export interface HudModel {
   mode: Mode;
@@ -192,7 +192,9 @@ export function Overlay({
           })
         : null}
       {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
-      {playing && model.laserTimer > 0 ? <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} /> : null}
+      {playing && model.laserTimer > 0 ? (
+        <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} armed />
+      ) : null}
 
       {playing && ui === 'none' && cue ? (
         <TutorialPrompt
@@ -561,7 +563,7 @@ function TutorialPrompt({
       : Math.max(field.top + 72, guide.y - 132);
     const arrowTop = upper ? guide.y + 32 : guide.y - 36;
     return (
-      <View pointerEvents="none" style={styles.overlay}>
+      <View ref={markIgnoresPointer} pointerEvents="none" style={styles.overlay}>
         <View style={[styles.prompt, { top: textTop }]}>
           <Text style={styles.promptTitle}>{title}</Text>
           {detail ? <Text style={styles.promptDetail}>{detail}</Text> : null}
@@ -589,7 +591,7 @@ function TutorialPrompt({
     const pointDown = bounds.y + bounds.h / 2 > field.height * 0.42;
     const arrowTop = pointDown ? Math.max(field.top + 8, bounds.y - 28) : bounds.y + bounds.h + 6;
     return (
-      <View pointerEvents="none" style={styles.overlay}>
+      <View ref={markIgnoresPointer} pointerEvents="none" style={styles.overlay}>
         <Text style={[styles.powerText, { top: Math.max(field.top + 28, field.height * 0.3) }]}>Tap the icon to use it</Text>
         <Animated.View
           style={[
@@ -621,7 +623,7 @@ function TutorialPrompt({
   const detail =
     cue === 'ammo' ? '' : cue === 'pickup' ? 'Fly into the glowing badge' : scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
   return (
-    <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
+    <View ref={markIgnoresPointer} pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
       <Text style={styles.promptTitle}>{title}</Text>
       {detail ? <Text style={styles.promptDetail}>{detail}</Text> : null}
       <Animated.View style={{ marginTop: 14, transform: [{ translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-6, 36] }) }] }}>
@@ -915,7 +917,21 @@ function VolumeRow({
   );
 }
 
-function LaserAimStick({ field, layout, aimX, aimY, hint }: { field: Field; layout: HudLayout; aimX: number; aimY: number; hint: boolean }) {
+function LaserAimStick({
+  field,
+  layout,
+  aimX,
+  aimY,
+  hint,
+  armed,
+}: {
+  field: Field;
+  layout: HudLayout;
+  aimX: number;
+  aimY: number;
+  hint: boolean;
+  armed: boolean;
+}) {
   const stick = laserStickRect(field, layout);
   const travel = stick.w * 0.28;
   const knob = stick.w * 0.34;
@@ -924,9 +940,12 @@ function LaserAimStick({ field, layout, aimX, aimY, hint }: { field: Field; layo
   return (
     <>
       <View
-        ref={markLaserZone}
+        ref={(node) => {
+          markLaserZone(node);
+          if (!armed) markIgnoresPointer(node);
+        }}
         collapsable={false}
-        pointerEvents="auto"
+        pointerEvents={armed ? 'auto' : 'none'}
         accessibilityLabel="Aim laser"
         style={[styles.laserStick, { left: stick.x, top: stick.y, width: stick.w, height: stick.h }]}
       >
@@ -1012,6 +1031,7 @@ const styles = StyleSheet.create({
     zIndex: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   laserBase: {
     width: '78%',

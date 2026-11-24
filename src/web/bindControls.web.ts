@@ -1,5 +1,5 @@
 import type { Controls } from '../game/controls';
-import { classifyTouch } from './touchUi';
+import { classifyTouch, resolveTouchSurface } from './touchUi';
 
 const GAME_KEYS = new Set([
   'ArrowLeft',
@@ -28,6 +28,20 @@ function fireZone(target: EventTarget | null): boolean {
 
 function laserZone(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-alien-laser]') != null;
+}
+
+function clientInside(selector: string, clientX: number, clientY: number): boolean {
+  const node = document.querySelector(selector);
+  if (!(node instanceof HTMLElement)) return false;
+  const rect = node.getBoundingClientRect();
+  return clientX >= rect.left && clientY >= rect.top && clientX <= rect.right && clientY <= rect.bottom;
+}
+
+/** Tutorial cards and arrows must not eat a touch meant for the fire button. */
+export function markIgnoresPointer(node: unknown): void {
+  const element = node as HTMLElement | null;
+  if (!element?.style?.setProperty) return;
+  element.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function slotIndex(target: EventTarget | null): number | null {
@@ -75,7 +89,8 @@ export function markFireZone(node: unknown): void {
 
 let fireTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
 let fireReleaseHandler: ((id: number) => void) | null = null;
-let laserTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
+let laserTouchHandler: ((id: number, x: number, y: number) => boolean) | null = null;
+let laserReleaseHandler: ((id: number) => void) | null = null;
 
 export function markLaserZone(node: unknown): void {
   const element = node as HTMLElement | null;
@@ -93,16 +108,19 @@ export function markLaserZone(node: unknown): void {
     };
   };
   const start = (event: TouchEvent) => {
-    event.preventDefault();
     const handler = laserTouchHandler;
     if (!handler) return;
+    let capture = false;
     for (const touch of Array.from(event.changedTouches)) {
+      // A finger on the fire button stays a shot, even when Safari hit-tests the stick.
+      if (clientInside('[data-alien-fire]', touch.clientX, touch.clientY)) continue;
       const point = localPoint(touch);
-      handler(touch.identifier, point.x, point.y);
+      if (handler(touch.identifier, point.x, point.y)) capture = true;
     }
+    if (capture && event.cancelable) event.preventDefault();
   };
   const end = (event: TouchEvent) => {
-    const handler = fireReleaseHandler;
+    const handler = laserReleaseHandler;
     if (!handler) return;
     for (const touch of Array.from(event.changedTouches)) handler(touch.identifier);
   };
@@ -138,9 +156,16 @@ export function bindControls(
     controls.pointerUp(id);
   };
   laserTouchHandler = (id, x, y) => {
-    if (isUiOpen()) return;
-    if (controls.fireId === id || controls.onFireButton(x, y)) return;
+    if (isUiOpen() || !controls.laserArmed()) return false;
+    if (controls.fireId === id || controls.onFireButton(x, y)) return false;
     controls.claimLaser(id, x, y);
+    return controls.laserId === id;
+  };
+  laserReleaseHandler = (id) => {
+    // The stick's touchend must not lift the trigger. Safari delivers that
+    // event to the stick when it hit-tested the stick for a fire-button touch.
+    if (controls.fireId === id) return;
+    if (controls.laserId === id) controls.pointerUp(id);
   };
 
   const syncLiveTouches = (event: TouchEvent) => {
@@ -157,16 +182,23 @@ export function bindControls(
     let cancel = true;
     for (const touch of Array.from(event.changedTouches)) {
       const point = local(touch.clientX, touch.clientY);
-      const onFireZone = fireZone(touch.target) || (event.changedTouches.length === 1 && fireZone(event.target));
-      if (onFireZone) {
+      const targetFire = fireZone(touch.target) || (event.changedTouches.length === 1 && fireZone(event.target));
+      const targetLaser = laserZone(touch.target) || (event.changedTouches.length === 1 && laserZone(event.target));
+      const onFireButton = controls.onFireButton(point.x, point.y) || clientInside('[data-alien-fire]', touch.clientX, touch.clientY);
+      const surface = resolveTouchSurface({
+        target: targetFire ? 'fire' : targetLaser ? 'laser' : 'other',
+        onFireButton,
+        laserArmed: controls.laserArmed(),
+        onLaserStick: controls.onLaserStick(point.x, point.y),
+      });
+      if (surface === 'fire') {
         controls.claimFire(touch.identifier, point.x, point.y, ship.x, ship.y);
         play = true;
         continue;
       }
-      const onLaserZone = laserZone(touch.target) || (event.changedTouches.length === 1 && laserZone(event.target));
-      if (onLaserZone && controls.fireId !== touch.identifier && !controls.onFireButton(point.x, point.y)) {
+      if (surface === 'laser') {
         controls.claimLaser(touch.identifier, point.x, point.y);
-        continue;
+        if (controls.laserId === touch.identifier) continue;
       }
       const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
       const onFire = controls.fireId === touch.identifier || controls.onFireButton(point.x, point.y);
@@ -209,7 +241,17 @@ export function bindControls(
     const onUi = uiNode(event.target);
     const onSlot = slotIndex(event.target) != null;
     if (!isUiOpen() && event.type !== 'touchcancel' && (!onUi || onSlot) && event.cancelable) event.preventDefault();
-    for (const touch of Array.from(event.changedTouches)) controls.pointerUp(touch.identifier);
+    const stickCancel = event.type === 'touchcancel' && (laserZone(event.target) || Array.from(event.changedTouches).some((touch) => laserZone(touch.target)));
+    for (const touch of Array.from(event.changedTouches)) {
+      if (stickCancel && controls.fireId === touch.identifier) continue;
+      controls.pointerUp(touch.identifier);
+    }
+    if (stickCancel && controls.fireId != null) {
+      const live = Array.from(event.touches, (touch) => touch.identifier);
+      if (!live.includes(controls.fireId)) live.push(controls.fireId);
+      controls.syncTouches(live);
+      return;
+    }
     // A cancel often arrives with no remaining touches. Drop anything the browser no longer lists.
     syncLiveTouches(event);
   };
@@ -304,6 +346,7 @@ export function bindControls(
     fireTouchHandler = null;
     fireReleaseHandler = null;
     laserTouchHandler = null;
+    laserReleaseHandler = null;
     window.removeEventListener('touchstart', onTouchStart, touchOptions);
     window.removeEventListener('touchmove', onTouchMove, touchOptions);
     window.removeEventListener('touchend', onTouchEnd, touchOptions);
