@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AMMO_INTERVAL_SLOW, KEYBOARD_SPEED, LASER_DPS, RAPID_CONE, SHIP_MARGIN, START_AMMO, STICK_SPEED } from './constants';
 import { LASER_AIM_RADIUS, laserAngleFromStick } from './laserAim';
-import { chooseMissileTarget, createGame, difficulty, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
+import { beamNose, chooseMissileTarget, createGame, difficulty, ensureTutorialDrop, halfScreenRadius, idleIntent, makeEnemy, rollAmmoAmount, step } from './logic';
 import { createRng } from './rng';
 
 function playing(width = 400, height = 800) {
@@ -198,6 +198,43 @@ describe('simulation', () => {
     assert.equal(state.score, 100);
   });
 
+  it('places a tutorial ammo box in the ship column and replaces it after a miss', () => {
+    const state = playing();
+    const cooldown = state.ammoCooldown;
+    const id = ensureTutorialDrop(state, 'ammo', null);
+    const box = state.pickups.find((pickup) => pickup.id === id)!;
+    assert.equal(box.kind, 'ammo');
+    assert.equal(box.amount, 100);
+    assert.ok(box.y < 0);
+    assert.ok(Math.abs(box.x - state.shipX) < 1);
+    assert.equal(state.ammoCooldown, cooldown);
+    assert.equal(ensureTutorialDrop(state, 'ammo', id), id);
+    box.y = state.shipY + 8;
+    const again = ensureTutorialDrop(state, 'ammo', id);
+    assert.notEqual(again, id);
+    const next = state.pickups.find((pickup) => pickup.id === again)!;
+    assert.ok(next.y < 0);
+    assert.ok(Math.abs(next.x - state.shipX) < 1);
+  });
+
+  it('places a tutorial power-up on screen above the ship and replaces a missed one', () => {
+    const state = playing();
+    const cooldown = state.powerCooldown;
+    const id = ensureTutorialDrop(state, 'power', null);
+    const drop = state.pickups.find((pickup) => pickup.id === id)!;
+    assert.equal(drop.kind, 'rapid');
+    assert.ok(drop.y > 0 && drop.y < state.height);
+    assert.ok(state.shipY - drop.y >= 110);
+    assert.ok(Math.abs(drop.x - state.shipX) < 1);
+    assert.equal(state.powerCooldown, cooldown);
+    assert.equal(ensureTutorialDrop(state, 'power', id), id);
+    drop.y = state.height + 30;
+    const again = ensureTutorialDrop(state, 'power', id);
+    assert.notEqual(again, id);
+    const next = state.pickups.find((pickup) => pickup.id === again)!;
+    assert.ok(next.y > 0 && next.y < state.shipY - 100);
+  });
+
   it('collects an ammo box by flying into it', () => {
     const state = playing();
     state.ammo = 10;
@@ -384,7 +421,7 @@ describe('simulation', () => {
     assert.ok(aim != null);
     step(state, idleIntent({ laserAimActive: true, laserAimX: LASER_AIM_RADIUS, laserAimY: -8 }), 0.05);
     assert.ok(Math.abs(state.laserAngle - aim) < 0.001);
-    const nose = { x: state.shipX, y: state.shipY - 24 };
+    const nose = beamNose(state);
     state.enemies.push(makeEnemy({ id: 1, x: nose.x + Math.cos(aim) * 180, y: nose.y + Math.sin(aim) * 180, r: 16, hp: 10, maxHp: 10 }));
     state.enemies.push(makeEnemy({ id: 2, x: nose.x, y: nose.y - 180, r: 16, hp: 10, maxHp: 10 }));
     step(state, idleIntent(), 0.05);
@@ -393,6 +430,31 @@ describe('simulation', () => {
     const above = state.enemies.find((enemy) => enemy.id === 2);
     assert.ok(onBeam && onBeam.hp < 10);
     assert.ok(above && above.hp === 10);
+  });
+
+  it('runs a shield or time warp beside another power', () => {
+    const state = playing();
+    state.inventory = ['shield', 'rapid'];
+    step(state, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.equal(state.shieldHits, 1);
+    step(state, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.ok(state.rapidTimer > 1);
+    assert.equal(state.shieldHits, 1);
+
+    const alongside = playing();
+    alongside.rapidTimer = 4;
+    alongside.inventory = ['warp'];
+    step(alongside, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.ok(alongside.warpTimer > 4);
+    assert.ok(alongside.rapidTimer > 3);
+    assert.deepEqual(alongside.inventory, []);
+
+    const blocked = playing();
+    blocked.inventory = ['rapid', 'bomb'];
+    step(blocked, idleIntent({ activateSlot: 0 }), 0.016);
+    step(blocked, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.equal(blocked.bomb, null);
+    assert.deepEqual(blocked.inventory, ['bomb']);
   });
 
   it('stores a power-up until its icon is tapped and ignores a fourth one', () => {

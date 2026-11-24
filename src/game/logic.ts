@@ -397,14 +397,12 @@ function warpPace(state: GameState): number {
   return state.warpTimer > 0 ? WARP_SCALE : 1;
 }
 
-function powerActive(state: GameState): boolean {
-  normalizeShield(state);
+/** Powers that still take the single active slot. Shield and warp are not in this list. */
+function exclusivePowerActive(state: GameState): boolean {
   return (
     state.rapidTimer > 0 ||
     state.laserTimer > 0 ||
-    state.shieldHits > 0 ||
     state.wingmanTimer > 0 ||
-    state.warpTimer > 0 ||
     state.missileLeft > 0 ||
     state.missiles.length > 0 ||
     state.bomb != null ||
@@ -413,9 +411,11 @@ function powerActive(state: GameState): boolean {
 }
 
 function activatePower(state: GameState, intent: Intent): void {
-  if (intent.activateSlot == null || powerActive(state)) return;
+  if (intent.activateSlot == null) return;
   const kind = state.inventory[intent.activateSlot];
   if (!kind) return;
+  const stacks = kind === 'shield' || kind === 'warp';
+  if (!stacks && exclusivePowerActive(state)) return;
   state.inventory.splice(intent.activateSlot, 1);
   if (kind === 'rapid') {
     state.rapidTimer = RAPID_DURATION;
@@ -665,6 +665,30 @@ function spawnPickup(state: GameState, kind: PickupKind, amount: number): void {
     r,
     spin: state.rng.next() * Math.PI * 2,
   });
+}
+
+/**
+ * Keeps one tutorial drop drifting toward the ship. An ammo box enters from above
+ * the screen. A power-up is placed on screen, above the ship. A drop that falls
+ * past the ship is replaced. Normal spawn timers are left alone.
+ */
+export function ensureTutorialDrop(state: GameState, kind: 'ammo' | 'power', previousId: number | null): number {
+  const wanted: PickupKind = kind === 'ammo' ? 'ammo' : 'rapid';
+  const previous = previousId == null ? undefined : state.pickups.find((pickup) => pickup.id === previousId);
+  if (previous && previous.kind === wanted && previous.y < state.shipY - 28) return previous.id;
+  spawnPickup(state, wanted, kind === 'ammo' ? 100 : 0);
+  const drop = state.pickups[state.pickups.length - 1];
+  const pad = drop.r + 16;
+  drop.x = clamp(state.shipX, pad, Math.max(pad, state.width - pad));
+  if (kind === 'power') {
+    const ceiling = drop.r + 24;
+    let y = state.shipY - 170;
+    if (state.shipY - y < 110) y = state.shipY - 110;
+    if (y < ceiling) y = ceiling;
+    if (y > state.height - drop.r - 24) y = Math.max(ceiling, state.height * 0.35);
+    drop.y = y;
+  }
+  return drop.id;
 }
 
 function moveBullets(state: GameState, dt: number): void {
@@ -923,7 +947,8 @@ function explode(state: GameState, x: number, y: number, color: string): void {
 }
 
 export function beamNose(state: GameState): { x: number; y: number } {
-  return { x: state.shipX, y: state.shipY - 24 };
+  const angle = state.laserTimer > 0 ? state.laserAngle : -Math.PI / 2;
+  return { x: state.shipX + Math.cos(angle) * 24, y: state.shipY + Math.sin(angle) * 24 };
 }
 
 function burst(state: GameState, x: number, y: number, color: string, count: number): void {
