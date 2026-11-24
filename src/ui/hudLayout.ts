@@ -77,17 +77,30 @@ export function elementSize(id: HudElementId, scale: number, inventoryCount: num
   return { w: slot * count + gap * (count - 1), h: slot };
 }
 
-/** Small aim stick. It sits above the movement stick and clear of the fire button. */
-export function laserStickRect(field: Field): HudRect {
+/** Small aim stick on the right, above the fire button and the power-up slots. */
+export function laserStickRect(field: Field, layout?: HudLayout | null): HudRect {
   const size = LASER_STICK_SIZE;
-  const joy = elementSize('joystick', 1, 1);
-  const bottomPad = Math.max(8, field.bottom);
-  const joyTop = field.height - bottomPad - 14 - joy.h;
-  const clearance = Math.max(field.bottom, FIRE_BOTTOM_CLEARANCE);
+  const gap = 12;
+  const source = layout ?? defaultLayout(field);
+  const fireEl = source.elements.find((element) => element.id === 'fire');
+  const slotEl = source.elements.find((element) => element.id === 'inventory');
+  const fire = fireEl ? elementBounds(fireEl, field, 1) : { x: field.width - 88, y: field.height - 140, w: 80, h: 80 };
+  const slots = slotEl ? elementBounds(slotEl, field, 3) : fire;
+  const right = Math.max(fire.x + fire.w, slots.x + slots.w);
+  const topLimit = Math.min(fire.y, slots.y);
+  let x = Math.max(EDGE, right - size);
+  let y = topLimit - gap - size;
   const minTop = Math.max(EDGE, field.top);
-  const maxTop = Math.max(minTop, field.height - clearance - size);
-  const y = Math.min(maxTop, Math.max(minTop, joyTop - 12 - size));
-  return { x: 16, y, w: size, h: size };
+  if (y < minTop) y = minTop;
+  const rect = { x, y, w: size, h: size };
+  if (rectsOverlap(rect, fire) || rectsOverlap(rect, slots)) {
+    x = Math.max(EDGE, Math.min(fire.x, slots.x) - gap - size);
+  }
+  return { x, y, w: size, h: size };
+}
+
+function rectsOverlap(a: HudRect, b: HudRect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 export function gearRect(field: Field): HudRect {

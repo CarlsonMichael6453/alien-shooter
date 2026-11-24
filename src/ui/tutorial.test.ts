@@ -4,6 +4,7 @@ import { memoryStore } from './kv';
 import {
   FRESH_TUTORIAL,
   POWER_HINT_SECONDS,
+  TUTORIAL_POWER_DELAY,
   advanceTutorial,
   freshSession,
   loadTutorial,
@@ -23,6 +24,8 @@ const field = (overrides: Partial<TutorialFrame> = {}): TutorialFrame => ({
   moveInput: false,
   shotsFired: 0,
   shotsBefore: 0,
+  ammo: 200,
+  ammoBefore: 200,
   inventory: 0,
   inventoryBefore: 0,
   frozen: false,
@@ -45,19 +48,23 @@ describe('tutorial prompts', () => {
   });
 
   it('dismisses the shoot prompt on the first shot and waits to explain a power-up', () => {
-    const learned: TutorialProgress = { moved: true, fired: false, power: false };
+    const learned: TutorialProgress = { moved: true, fired: false, ammo: false, power: false };
     const session: TutorialSession = { ...freshSession(), inRun: true, shipMoved: true, anchorX: 180, anchorY: 640 };
     const shooting = advanceTutorial(learned, session, field({ shotsFired: 1, shotsBefore: 0 }));
-    assert.equal(shooting.cue, 'pickup');
+    assert.equal(shooting.cue, 'ammo');
     assert.equal(shooting.progress.fired, true);
 
-    const holding = advanceTutorial(shooting.progress, shooting.session, field({ inventory: 1, inventoryBefore: 0, shotsFired: 1 }));
+    const grabbed = advanceTutorial(shooting.progress, shooting.session, field({ ammo: 300, ammoBefore: 200, shotsFired: 1 }));
+    assert.equal(grabbed.cue, 'pickup');
+    assert.equal(grabbed.progress.ammo, true);
+
+    const holding = advanceTutorial(grabbed.progress, grabbed.session, field({ inventory: 1, inventoryBefore: 0, shotsFired: 1, ammo: 300 }));
     assert.equal(holding.cue, 'power');
     assert.equal(holding.progress.power, false);
   });
 
   it('dismisses the power prompt when the icon is used or the hint times out', () => {
-    const learned: TutorialProgress = { moved: true, fired: true, power: false };
+    const learned: TutorialProgress = { moved: true, fired: true, ammo: true, power: false };
     const session: TutorialSession = { ...freshSession(), inRun: true, anchorX: 180, anchorY: 640 };
     const used = advanceTutorial(learned, session, field({ inventory: 0, inventoryBefore: 1 }));
     assert.equal(used.cue, null);
@@ -67,6 +74,7 @@ describe('tutorial prompts', () => {
       playing: true,
       shipMoved: false,
       shot: false,
+      ammoCollected: false,
       inventoryCount: 2,
       powerUsed: false,
       powerHintElapsed: POWER_HINT_SECONDS - 0.1,
@@ -76,6 +84,7 @@ describe('tutorial prompts', () => {
       playing: true,
       shipMoved: false,
       shot: false,
+      ammoCollected: false,
       inventoryCount: 2,
       powerUsed: false,
       powerHintElapsed: POWER_HINT_SECONDS,
@@ -85,7 +94,7 @@ describe('tutorial prompts', () => {
   });
 
   it('does not repeat a completed step, including after the run ends', () => {
-    const done: TutorialProgress = { moved: true, fired: true, power: true };
+    const done: TutorialProgress = { moved: true, fired: true, ammo: true, power: true };
     const again = advanceTutorial(done, freshSession(), field({ inventory: 3 }));
     assert.equal(again.cue, null);
     assert.deepEqual(again.progress, done);
@@ -96,21 +105,37 @@ describe('tutorial prompts', () => {
   });
 
   it('does not complete a step or spend the power timeout while frozen', () => {
-    const learned: TutorialProgress = { moved: false, fired: false, power: false };
+    const learned: TutorialProgress = { moved: false, fired: false, ammo: false, power: false };
     const frozen = advanceTutorial(learned, { ...freshSession(), inRun: true, anchorX: 10, anchorY: 10 }, field({ frozen: true, moveInput: true, shipX: 80 }));
     assert.equal(frozen.cue, 'move');
     assert.equal(frozen.progress.moved, false);
     assert.equal(frozen.session.powerElapsed, 0);
   });
 
+  it('holds the power-up prompt until the forced drop is due', () => {
+    let progress: TutorialProgress = { moved: true, fired: true, ammo: true, power: false };
+    let session: TutorialSession = { ...freshSession(), inRun: true, anchorX: 180, anchorY: 640 };
+    for (let elapsed = 0; elapsed < TUTORIAL_POWER_DELAY - 0.05; elapsed += 0.05) {
+      const waiting = advanceTutorial(progress, session, field());
+      progress = waiting.progress;
+      session = waiting.session;
+      assert.equal(waiting.cue, 'pickup');
+      assert.ok(waiting.session.powerDropWait < TUTORIAL_POWER_DELAY);
+    }
+    const due = advanceTutorial(progress, session, field());
+    assert.equal(due.cue, 'pickup');
+    assert.ok(due.session.powerDropWait >= TUTORIAL_POWER_DELAY);
+  });
+
   it('persists completion and can be replayed from a cleared save', async () => {
     const store = memoryStore();
-    const done: TutorialProgress = { moved: true, fired: true, power: false };
+    const done: TutorialProgress = { moved: true, fired: true, ammo: false, power: false };
     await saveTutorial(store, done);
     assert.deepEqual(await loadTutorial(store), done);
     await saveTutorial(store, FRESH_TUTORIAL);
     assert.deepEqual(await loadTutorial(store), FRESH_TUTORIAL);
-    assert.deepEqual(parseTutorial('{"moved":true,"nope":1}'), { moved: true, fired: false, power: false });
+    assert.deepEqual(parseTutorial('{"moved":true,"nope":1}'), { moved: true, fired: false, ammo: false, power: false });
+    assert.deepEqual(parseTutorial('{"moved":true,"fired":true,"power":true}'), { moved: true, fired: true, ammo: true, power: true });
     assert.deepEqual(parseTutorial('not-json'), FRESH_TUTORIAL);
     assert.deepEqual(await loadTutorial(memoryStore()), FRESH_TUTORIAL);
   });

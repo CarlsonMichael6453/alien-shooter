@@ -39,7 +39,7 @@ export function paintGame(painter: Painter, state: GameState): void {
 
   const ordered = state.enemies.slice().sort((a, b) => b.r - a.r);
   for (const enemy of ordered) {
-    drawEnemy(painter, enemy, theme.enemy);
+    drawEnemy(painter, enemy);
     drawHealth(painter, enemy);
   }
   if (state.boss) drawBoss(painter, state.boss, theme.enemy, state.time);
@@ -115,6 +115,7 @@ function drawShip(painter: Painter, state: GameState): void {
   const look = shipTheme(state.shipId).look;
   painter.save();
   painter.translate(state.shipX, state.shipY);
+  if (state.laserTimer > 0) painter.rotate(state.laserAngle + Math.PI / 2);
   if (look === 'festive') {
     drawGingerbread(painter, blink);
     painter.restore();
@@ -129,7 +130,6 @@ function drawShip(painter: Painter, state: GameState): void {
     painter.fillCircle(0, 2, 22, 'rgba(126,240,255,0.12)');
   }
   painter.fillEllipse(0, 18, 16, 10, 'rgba(255, 140, 40, 0.35)');
-  painter.fillCircle(0, 4, 22, 'rgba(80, 210, 255, 0.14)');
   painter.fillPolygon(
     [
       [-26, 8],
@@ -618,7 +618,7 @@ function pointLineDistance(px: number, py: number, x1: number, y1: number, x2: n
   return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
 }
 
-function drawEnemy(painter: Painter, enemy: Enemy, tint: string): void {
+function drawEnemy(painter: Painter, enemy: Enemy): void {
   painter.save();
   if (enemy.shape === 'cruiser') drawCruiser(painter, enemy);
   else if (enemy.shape === 'rock') drawRock(painter, enemy);
@@ -627,7 +627,6 @@ function drawEnemy(painter: Painter, enemy: Enemy, tint: string): void {
   else if (enemy.shape === 'carrier') drawCarrier(painter, enemy);
   else drawSaucer(painter, enemy);
   painter.restore();
-  if (enemy.shape !== 'rock') painter.strokeCircle(enemy.x, enemy.y, enemy.r + 2, rgba(tint, 0.35), 1.2);
 }
 
 function drawBattleship(painter: Painter, enemy: Enemy): void {

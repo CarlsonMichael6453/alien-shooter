@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controls } from '../game/controls';
-import { createGame, quitToMenu, resizeGame, step } from '../game/logic';
+import { createGame, ensureTutorialDrop, quitToMenu, resizeGame, step } from '../game/logic';
 import { sectorTheme } from '../game/sectors';
 import type { GameState } from '../game/types';
 import { GameCanvas } from '../render/GameCanvas';
@@ -48,11 +48,13 @@ import { loadControlScheme, saveControlScheme, type ControlScheme } from './cont
 import { loadRatingMemory, recordDeath, rememberRatingChoice, saveRatingMemory, shouldAskForRating, type RatingMemory } from '../feedback/ratingPrompt';
 import {
   FRESH_TUTORIAL,
+  TUTORIAL_POWER_DELAY,
   advanceTutorial,
   freshSession,
   loadTutorial,
   sameProgress,
   saveTutorial,
+  tutorialGuide,
   type TutorialCue,
   type TutorialProgress,
   type TutorialSession,
@@ -73,6 +75,9 @@ const INITIAL_HUD: HudModel = {
   laserAimY: 0,
   laserHint: false,
   shipId: 'classic',
+  guideOn: false,
+  guideX: 0,
+  guideY: 0,
   inventory: [],
   powerOn: false,
   rapidTimer: 0,
@@ -352,12 +357,13 @@ export function GameScreen() {
         );
         const laserOn = state.mode === 'playing' && state.laserTimer > 0 && playingUi;
         if (laserOn) {
-          const aim = laserStickRect(field);
+          const aim = laserStickRect(field, hudLayoutRef.current);
           controlsRef.current.setLaserRect({ ...aim, x: aim.x + offsetRef.current });
         } else {
           controlsRef.current.setLaserRect(null);
         }
         const shotsBefore = state.shotsFired;
+        const ammoBefore = state.ammo;
         const inventoryBefore = state.inventory.length;
         const modeBefore = state.mode;
         const frozen = pausedRef.current || uiRef.current !== 'none';
@@ -428,11 +434,20 @@ export function GameScreen() {
           moveInput: !frozen && (control.moveActive || control.keyX !== 0 || control.keyY !== 0 || control.stickX !== 0 || control.stickY !== 0),
           shotsFired: state.shotsFired,
           shotsBefore,
+          ammo: state.ammo,
+          ammoBefore,
           inventory: state.inventory.length,
           inventoryBefore,
           frozen,
         });
-        sessionRef.current = tutorial.session;
+        let session = tutorial.session;
+        if (!frozen && state.mode === 'playing' && tutorial.cue === 'ammo') {
+          session = { ...session, ammoDropId: ensureTutorialDrop(state, 'ammo', session.ammoDropId) };
+        }
+        if (!frozen && state.mode === 'playing' && tutorial.cue === 'pickup' && session.powerDropWait >= TUTORIAL_POWER_DELAY) {
+          session = { ...session, powerDropId: ensureTutorialDrop(state, 'power', session.powerDropId) };
+        }
+        sessionRef.current = session;
         if (!sameProgress(tutorialRef.current, tutorial.progress)) {
           tutorialRef.current = tutorial.progress;
           void saveTutorial(storeRef.current, tutorial.progress);
@@ -450,6 +465,7 @@ export function GameScreen() {
         }
         canvasRef.current?.draw(state);
         pickupsRef.current?.sync(state);
+        const guide = tutorialGuide(state, tutorial.cue);
         publishHud(
           state,
           hudRef,
@@ -463,6 +479,7 @@ export function GameScreen() {
           control.laserAimY,
           laserHintOnRef.current && state.laserTimer > 0,
           state.shipId,
+          guide,
         );
         publishDebug(state, controlsRef.current, {
         openSettings: () => openUiRef.current('settings'),
@@ -677,13 +694,14 @@ function publishHud(
   laserAimY: number,
   laserHint: boolean,
   shipId: string,
+  guide: { x: number; y: number } | null,
 ): void {
   const powerOn =
     state.rapidTimer > 0 ||
     state.laserTimer > 0 ||
-    state.shieldTimer > 0 ||
     state.wingmanTimer > 0 ||
-    state.warpTimer > 0 ||
+    state.missileLeft > 0 ||
+    state.missiles.length > 0 ||
     state.bomb != null ||
     state.blast != null;
   const sectorName = sectorTheme(state.sector).name;
@@ -725,7 +743,10 @@ function publishHud(
     Math.abs(prev.laserAimX - laserAimX) < 1 &&
     Math.abs(prev.laserAimY - laserAimY) < 1 &&
     prev.laserHint === laserHint &&
-    prev.shipId === shipId
+    prev.shipId === shipId &&
+    prev.guideOn === (guide != null) &&
+    Math.abs(prev.guideX - (guide?.x ?? 0)) < 2 &&
+    Math.abs(prev.guideY - (guide?.y ?? 0)) < 2
   ) {
     return;
   }
@@ -756,6 +777,9 @@ function publishHud(
     laserAimY,
     laserHint,
     shipId,
+    guideOn: guide != null,
+    guideX: guide?.x ?? 0,
+    guideY: guide?.y ?? 0,
   };
   hudRef.current = next;
   setHud(next);

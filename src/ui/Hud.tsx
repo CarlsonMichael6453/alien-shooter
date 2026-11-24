@@ -49,6 +49,9 @@ export interface HudModel {
   laserAimY: number;
   laserHint: boolean;
   shipId: string;
+  guideOn: boolean;
+  guideX: number;
+  guideY: number;
 }
 
 export type UiMode = 'none' | 'settings' | 'editor' | 'buttons' | 'feedback' | 'pause' | 'scores' | 'ships' | 'privacy';
@@ -189,10 +192,18 @@ export function Overlay({
           })
         : null}
       {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
-      {playing && model.laserTimer > 0 ? <LaserAimStick field={field} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} /> : null}
+      {playing && model.laserTimer > 0 ? <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} /> : null}
 
       {playing && ui === 'none' && cue ? (
-        <TutorialPrompt cue={cue} field={field} finePointer={finePointer} inventory={inventory ?? null} count={Math.max(1, model.inventory.length)} scheme={scheme} />
+        <TutorialPrompt
+          cue={cue}
+          field={field}
+          finePointer={finePointer}
+          inventory={inventory ?? null}
+          count={Math.max(1, model.inventory.length)}
+          scheme={scheme}
+          guide={model.guideOn ? { x: model.guideX, y: model.guideY } : null}
+        />
       ) : null}
 
       {playing && ui === 'none' && model.hint && !cue ? (
@@ -489,7 +500,7 @@ function ElementBody({
   const slot = 46 * scale;
   const gap = 6 * scale;
   return (
-    <View style={[styles.inventory, { width, height, gap, opacity: model.powerOn && !editing ? 0.38 : 1 }]}>
+    <View style={[styles.inventory, { width, height, gap }]}>
       {slots.map((kind, index) => (
         <View
           key={`${kind}-${index}`}
@@ -502,7 +513,7 @@ function ElementBody({
               width: slot,
               height: slot,
               borderRadius: slot / 2,
-              opacity: model.inventory.length === 0 ? 0.45 : 1,
+              opacity: model.inventory.length === 0 ? 0.45 : model.powerOn && !editing && kind !== 'shield' && kind !== 'warp' ? 0.38 : 1,
             },
           ]}
         >
@@ -520,6 +531,7 @@ function TutorialPrompt({
   inventory,
   count,
   scheme,
+  guide,
 }: {
   cue: Exclude<TutorialCue, null>;
   field: Field;
@@ -527,6 +539,7 @@ function TutorialPrompt({
   inventory: HudElement | null;
   count: number;
   scheme: ControlScheme;
+  guide: { x: number; y: number } | null;
 }) {
   const drift = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -539,6 +552,38 @@ function TutorialPrompt({
     loop.start();
     return () => loop.stop();
   }, [drift]);
+  if ((cue === 'ammo' || cue === 'pickup') && guide) {
+    const title = cue === 'ammo' ? 'Grab ammo boxes to refill your ammo' : 'Pick up a power-up';
+    const detail = cue === 'pickup' ? 'Fly into the glowing badge' : null;
+    const upper = guide.y < field.height * 0.42;
+    const textTop = upper
+      ? Math.min(field.height * 0.7, Math.max(guide.y + 86, field.height * 0.48))
+      : Math.max(field.top + 72, guide.y - 132);
+    const arrowTop = upper ? guide.y + 32 : guide.y - 36;
+    return (
+      <View pointerEvents="none" style={styles.overlay}>
+        <View style={[styles.prompt, { top: textTop }]}>
+          <Text style={styles.promptTitle}>{title}</Text>
+          {detail ? <Text style={styles.promptDetail}>{detail}</Text> : null}
+        </View>
+        <Animated.View
+          style={[
+            styles.arrow,
+            {
+              left: guide.x - 11,
+              top: arrowTop,
+              transform: [
+                { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: upper ? [4, -6] : [-4, 6] }) },
+                { rotate: upper ? '180deg' : '0deg' },
+              ],
+            },
+          ]}
+        >
+          <Chevron />
+        </Animated.View>
+      </View>
+    );
+  }
   if (cue === 'power' && inventory) {
     const bounds = elementBounds(inventory, field, count);
     const pointDown = bounds.y + bounds.h / 2 > field.height * 0.42;
@@ -562,17 +607,19 @@ function TutorialPrompt({
     );
   }
   const title =
-    cue === 'pickup'
-      ? 'Pick up a power-up'
-      : scheme === 'joystick'
-        ? cue === 'move'
-          ? 'Drag the stick to move'
-          : 'Hold the fire button'
-        : cue === 'move'
-          ? 'Drag to move'
-          : 'Hold the fire button';
+    cue === 'ammo'
+      ? 'Grab ammo boxes to refill your ammo'
+      : cue === 'pickup'
+        ? 'Pick up a power-up'
+        : scheme === 'joystick'
+          ? cue === 'move'
+            ? 'Drag the stick to move'
+            : 'Hold the fire button'
+          : cue === 'move'
+            ? 'Drag to move'
+            : 'Hold the fire button';
   const detail =
-    cue === 'pickup' ? 'Fly into the glowing badge' : scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
+    cue === 'ammo' ? '' : cue === 'pickup' ? 'Fly into the glowing badge' : scheme === 'joystick' ? (cue === 'move' ? 'Left side' : 'Right side') : cue === 'move' ? 'Anywhere except the fire button' : 'Right side';
   return (
     <View pointerEvents="none" style={[styles.prompt, { top: Math.max(field.top + 28, field.height * 0.3) }]}>
       <Text style={styles.promptTitle}>{title}</Text>
@@ -868,8 +915,8 @@ function VolumeRow({
   );
 }
 
-function LaserAimStick({ field, aimX, aimY, hint }: { field: Field; aimX: number; aimY: number; hint: boolean }) {
-  const stick = laserStickRect(field);
+function LaserAimStick({ field, layout, aimX, aimY, hint }: { field: Field; layout: HudLayout; aimX: number; aimY: number; hint: boolean }) {
+  const stick = laserStickRect(field, layout);
   const travel = stick.w * 0.28;
   const knob = stick.w * 0.34;
   const dx = Math.max(-travel, Math.min(travel, aimX));
@@ -899,10 +946,22 @@ function LaserAimStick({ field, aimX, aimY, hint }: { field: Field; aimX: number
         />
       </View>
       {hint ? (
-        <View pointerEvents="none" style={[styles.laserHint, { left: stick.x - 8, top: Math.max(field.top + 8, stick.y - 78), width: stick.w + 16 }]}>
-          <Text style={styles.laserHintText}>Aim laser</Text>
-          <View style={styles.chevron} />
-        </View>
+        <>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.laserHint,
+              {
+                left: Math.max(8, Math.min(stick.x + stick.w / 2 - 54, field.width - 116)),
+                top: Math.max(field.top + 8, stick.y - 52),
+                width: 108,
+              },
+            ]}
+          >
+            <Text style={styles.laserHintText}>Aim laser</Text>
+          </View>
+          <View pointerEvents="none" style={[styles.laserHintArrow, { left: stick.x + stick.w / 2 - 9, top: Math.max(field.top + 28, stick.y - 16) }]} />
+        </>
       ) : null}
     </>
   );
@@ -970,6 +1029,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 29,
     alignItems: 'center',
+  },
+  laserHintArrow: {
+    position: 'absolute',
+    zIndex: 29,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderTopWidth: 14,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#FFE7D2',
   },
   laserHintText: {
     color: '#FFE7D2',
