@@ -134,16 +134,28 @@ async function main() {
     assert(started.mode === 'playing', 'Play button did not start the game');
     assert(started.shotsFired === 0, 'starting the game fired a shot');
 
+    const viewport = page.viewportSize();
+    assert(viewport, 'missing viewport');
+    const pointInView = (x, y, label) => {
+      assert(
+        x >= 0 && y >= 0 && x < viewport.width && y < viewport.height,
+        `${label} (${x}, ${y}) is outside the ${viewport.width}x${viewport.height} viewport`,
+      );
+    };
+
     // One finger steers and must not fire.
-    await touch(client, 'touchStart', [{ id: 1, x: 180, y: 640 }]);
-    await touch(client, 'touchMove', [{ id: 1, x: 180, y: 520 }]);
+    const moveFrom = { x: 180, y: 640 };
+    const moveTo = { x: 180, y: 520 };
+    pointInView(moveFrom.x, moveFrom.y, 'move start');
+    pointInView(moveTo.x, moveTo.y, 'move end');
+    await touch(client, 'touchStart', [{ id: 1, ...moveFrom }]);
+    await touch(client, 'touchMove', [{ id: 1, ...moveTo }]);
     await page.waitForTimeout(280);
     const steered = await snap();
-    assert(steered.mode === 'playing', 'first touch should start the game');
-    assert(steered.moveId === 1, `move finger was ${steered.moveId}`);
-    assert(steered.fireId == null, 'one finger should not claim fire');
+    assert(steered.mode === 'playing', 'drag did not stay in play');
     assert(steered.firing === false, 'one finger should not fire');
     assert(steered.shotsFired === 0, `shots fired with one finger: ${steered.shotsFired}`);
+    assert(steered.ammo === started.ammo, 'one finger spent ammo');
     assert(steered.shipY < started.shipY - 40, `ship did not follow the upward drag (${started.shipY} -> ${steered.shipY})`);
 
     await page.evaluate(() => {
@@ -156,18 +168,29 @@ async function main() {
       );
     });
 
-    // Second finger, held, fires. Moving it must not steer.
+    // Second finger on the fire button, held, fires. Sliding it inside the button must not steer.
+    const fireButton = page.getByLabel('Fire button', { exact: true });
+    await fireButton.waitFor({ state: 'visible' });
+    const fireBox = await fireButton.boundingBox();
+    assert(fireBox, 'Fire button has no on-screen box');
+    const fireX = fireBox.x + fireBox.width / 2;
+    const fireY = fireBox.y + fireBox.height / 2;
+    const fireNudge = {
+      x: Math.min(fireBox.x + fireBox.width - 4, fireX + 10),
+      y: Math.min(fireBox.y + fireBox.height - 4, fireY + 8),
+    };
+    pointInView(fireX, fireY, 'fire center');
+    pointInView(fireNudge.x, fireNudge.y, 'fire nudge');
     const parked = await snap();
-    await touch(client, 'touchStart', [{ id: 2, x: 70, y: 700 }]);
+    await touch(client, 'touchStart', [{ id: 2, x: fireX, y: fireY }]);
     await touch(client, 'touchMove', [
-      { id: 1, x: 180, y: 520 },
-      { id: 2, x: 140, y: 640 },
+      { id: 1, ...moveTo },
+      { id: 2, ...fireNudge },
     ]);
     await page.waitForTimeout(420);
     const firing = await snap();
-    assert(firing.moveId === 1 && firing.fireId === 2, `roles were move=${firing.moveId} fire=${firing.fireId}`);
-    assert(firing.firing === true, 'second finger should fire');
     assert(firing.shotsFired >= 2, `expected a steady stream, got ${firing.shotsFired} shots`);
+    assert(firing.ammo < parked.ammo, `ammo did not drop (${parked.ammo} -> ${firing.ammo})`);
     assert(Math.abs(firing.shipX - parked.shipX) < 8, 'dragging the fire finger moved the ship');
     assert(Math.abs(firing.shipY - parked.shipY) < 8, 'dragging the fire finger moved the ship vertically');
     assert(await page.evaluate(() => window.scrollY === 0), 'the page scrolled during a two-finger drag');
@@ -176,31 +199,36 @@ async function main() {
     assert(preventedFlag, 'touchmove was not preventDefaulted, so the browser can still scroll or zoom');
 
     // Lift the move finger. The remaining finger keeps firing and does not start steering.
-    await touch(client, 'touchEnd', [{ id: 1, x: 180, y: 520 }]);
-    const shotsAtLift = (await snap()).shotsFired;
-    await touch(client, 'touchMove', [{ id: 2, x: 40, y: 500 }]);
+    await touch(client, 'touchEnd', [{ id: 1, ...moveTo }]);
+    const atLift = await snap();
+    const fireAway = { x: 40, y: 500 };
+    pointInView(fireAway.x, fireAway.y, 'fire drag');
+    await touch(client, 'touchMove', [{ id: 2, ...fireAway }]);
     await page.waitForTimeout(300);
     const stillFiring = await snap();
-    assert(stillFiring.moveId == null, 'lifting the move finger reassigned the fire finger');
-    assert(stillFiring.fireId === 2, 'fire finger was lost');
-    assert(stillFiring.shotsFired > shotsAtLift, 'firing stopped while the second finger was still down');
+    assert(stillFiring.shotsFired > atLift.shotsFired, 'firing stopped while the second finger was still down');
+    assert(stillFiring.ammo < atLift.ammo, 'ammo stopped dropping while the fire finger was down');
     assert(Math.abs(stillFiring.shipX - firing.shipX) < 8, 'the fire finger started steering after the other finger lifted');
 
     // A new finger takes over steering while the original fire finger stays put.
-    await touch(client, 'touchStart', [{ id: 3, x: 200, y: 600 }]);
+    const nextFrom = { x: 200, y: 500 };
+    const nextTo = { x: 250, y: 460 };
+    pointInView(nextFrom.x, nextFrom.y, 'next move start');
+    pointInView(nextTo.x, nextTo.y, 'next move end');
+    await touch(client, 'touchStart', [{ id: 3, ...nextFrom }]);
     await touch(client, 'touchMove', [
-      { id: 2, x: 40, y: 500 },
-      { id: 3, x: 250, y: 560 },
+      { id: 2, ...fireAway },
+      { id: 3, ...nextTo },
     ]);
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(250);
     const swapped = await snap();
-    assert(swapped.moveId === 3, `new finger did not steer (move=${swapped.moveId})`);
-    assert(swapped.fireId === 2, `original fire finger changed to ${swapped.fireId}`);
     assert(swapped.shipX > stillFiring.shipX + 20, 'the new move finger did not drag the ship');
+    assert(swapped.shotsFired > stillFiring.shotsFired, 'firing stopped when a new finger started steering');
+    assert(swapped.ammo < stillFiring.ammo, 'ammo stopped dropping when a new finger started steering');
 
     await touch(client, 'touchEnd', [
-      { id: 2, x: 40, y: 500 },
-      { id: 3, x: 250, y: 560 },
+      { id: 2, ...fireAway },
+      { id: 3, ...nextTo },
     ]);
     await page.waitForTimeout(200);
     const released = await snap();
