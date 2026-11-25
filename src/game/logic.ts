@@ -43,6 +43,7 @@ import {
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
 import { clamp, easeOut, halfScreenRadius, hits, lerp, pointSegmentDistance } from './fieldMath';
+import { beamNose } from './beam';
 import { damageBoss, moveEnemyBullets, rollPower, spawnHeavy, startBoss, tickBoss, tickHeavyGuns, tickWingmen } from './enemies';
 import { chooseMissileTarget, tickMissiles } from './missiles';
 export type { MissileAim } from './missiles';
@@ -916,10 +917,7 @@ function collect(state: GameState, pickup: Pickup): boolean {
   return true;
 }
 
-export function beamNose(state: GameState): { x: number; y: number } {
-  const angle = state.laserTimer > 0 ? state.laserAngle : -Math.PI / 2;
-  return { x: state.shipX + Math.cos(angle) * 24, y: state.shipY + Math.sin(angle) * 24 };
-}
+export { beamNose };
 
 function clampShip(state: GameState): void {
   const minX = Math.min(SHIP_MARGIN, state.width / 2);
