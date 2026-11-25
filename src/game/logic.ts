@@ -22,7 +22,6 @@ import {
   LASER_DURATION,
   MAX_BULLETS,
   MAX_INVENTORY,
-  MAX_PARTICLES,
   MISSILE_COUNT,
   MISSILE_DAMAGE,
   MISSILE_INTERVAL,
@@ -45,10 +44,11 @@ import {
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
 import { clamp, easeOut, halfScreenRadius, hits, lerp, pointSegmentDistance } from './fieldMath';
+import { burst, explode, pushParticle } from './particles';
 import { driftStars, seedStars } from './stars';
 import { DEFAULT_SHIP } from './ships';
 import { WAVE_BREAK, bossSectorForWave, isBossWave, waveQuota } from './waves';
-import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Missile, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
+import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Missile, Pickup, PickupKind, PowerKind, Rng } from './types';
 
 export interface Difficulty {
   spawnInterval: number;
@@ -916,62 +916,9 @@ function collect(state: GameState, pickup: Pickup): boolean {
   return true;
 }
 
-function explode(state: GameState, x: number, y: number, color: string): void {
-  burst(state, x, y, color, 14);
-  burst(state, x, y, '#FFF6D8', 6);
-  for (let i = 0; i < 7; i += 1) {
-    const angle = state.rng.next() * Math.PI * 2;
-    const speed = 30 + state.rng.next() * 90;
-    pushParticle(state, {
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.45 + state.rng.next() * 0.35,
-      maxLife: 0.8,
-      r: 2.2 + state.rng.next() * 2.2,
-      color: state.rng.next() > 0.5 ? '#8A7564' : '#C4B4A4',
-    });
-  }
-  pushParticle(state, {
-    x,
-    y,
-    vx: 0,
-    vy: 0,
-    life: 0.14,
-    maxLife: 0.14,
-    r: 22,
-    color: '#FFF8E8',
-  });
-}
-
 export function beamNose(state: GameState): { x: number; y: number } {
   const angle = state.laserTimer > 0 ? state.laserAngle : -Math.PI / 2;
   return { x: state.shipX + Math.cos(angle) * 24, y: state.shipY + Math.sin(angle) * 24 };
-}
-
-function burst(state: GameState, x: number, y: number, color: string, count: number): void {
-  for (let i = 0; i < count; i += 1) {
-    const angle = (i / count) * Math.PI * 2 + state.rng.next() * 0.4;
-    const speed = 50 + state.rng.next() * 160;
-    pushParticle(state, {
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.28 + state.rng.next() * 0.28,
-      maxLife: 0.56,
-      r: 1.8 + state.rng.next() * 2.4,
-      color,
-    });
-  }
-}
-
-function pushParticle(state: GameState, particle: Particle): void {
-  state.particles.push(particle);
-  if (state.particles.length > MAX_PARTICLES) {
-    state.particles.splice(0, state.particles.length - MAX_PARTICLES);
-  }
 }
 
 function clampShip(state: GameState): void {
