@@ -45,6 +45,7 @@ import {
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
 import { clamp, easeOut, halfScreenRadius, hits, lerp, pointSegmentDistance } from './fieldMath';
+import { driftStars, seedStars } from './stars';
 import { DEFAULT_SHIP } from './ships';
 import { WAVE_BREAK, bossSectorForWave, isBossWave, waveQuota } from './waves';
 import type { Blast, Bomb, Boss, Enemy, EnemyBullet, GameState, Intent, Missile, Particle, Pickup, PickupKind, PowerKind, Rng } from './types';
@@ -970,27 +971,6 @@ function pushParticle(state: GameState, particle: Particle): void {
   state.particles.push(particle);
   if (state.particles.length > MAX_PARTICLES) {
     state.particles.splice(0, state.particles.length - MAX_PARTICLES);
-  }
-}
-
-function driftStars(state: GameState, dt: number): void {
-  for (const star of state.stars) {
-    star.y += star.speed * dt;
-    if (star.y > 1) star.y -= 1;
-  }
-}
-
-function seedStars(state: GameState): void {
-  const count = 56;
-  for (let i = 0; i < count; i += 1) {
-    state.stars.push({
-      x: state.rng.next(),
-      y: state.rng.next(),
-      speed: 0.015 + state.rng.next() * 0.07,
-      size: state.rng.next() < 0.15 ? 1.8 : 0.8 + state.rng.next() * 0.7,
-      alpha: 0.25 + state.rng.next() * 0.7,
-      warm: state.rng.next() > 0.82,
-    });
   }
 }
 
