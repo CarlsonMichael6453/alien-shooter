@@ -120,6 +120,20 @@ async function main() {
     assert(before.mode === 'ready', `expected ready, got ${before.mode}`);
     assert(before.shotsFired === 0, 'title screen should not be firing');
 
+    // The title screen is the Play menu. Start the way a player does: tap that button.
+    const play = page.getByRole('button', { name: 'Play' });
+    await play.waitFor({ state: 'visible' });
+    const playBox = await play.boundingBox();
+    assert(playBox, 'Play button has no on-screen box');
+    const playX = playBox.x + playBox.width / 2;
+    const playY = playBox.y + playBox.height / 2;
+    await touch(client, 'touchStart', [{ id: 1, x: playX, y: playY }]);
+    await touch(client, 'touchEnd', [{ id: 1, x: playX, y: playY }]);
+    await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing', null, { timeout: 3000 });
+    const started = await snap();
+    assert(started.mode === 'playing', 'Play button did not start the game');
+    assert(started.shotsFired === 0, 'starting the game fired a shot');
+
     // One finger steers and must not fire.
     await touch(client, 'touchStart', [{ id: 1, x: 180, y: 640 }]);
     await touch(client, 'touchMove', [{ id: 1, x: 180, y: 520 }]);
@@ -130,7 +144,7 @@ async function main() {
     assert(steered.fireId == null, 'one finger should not claim fire');
     assert(steered.firing === false, 'one finger should not fire');
     assert(steered.shotsFired === 0, `shots fired with one finger: ${steered.shotsFired}`);
-    assert(steered.shipY < before.shipY - 40, `ship did not follow the upward drag (${before.shipY} -> ${steered.shipY})`);
+    assert(steered.shipY < started.shipY - 40, `ship did not follow the upward drag (${started.shipY} -> ${steered.shipY})`);
 
     await page.evaluate(() => {
       document.addEventListener(
