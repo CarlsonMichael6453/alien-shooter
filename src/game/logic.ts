@@ -37,7 +37,6 @@ import {
   START_AMMO,
   START_LIVES,
   WARP_DURATION,
-  WARP_SCALE,
   WINGMAN_DURATION,
   WINGMAN_INTERVAL,
 } from './constants';
@@ -45,6 +44,7 @@ import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
 import { clamp, easeOut, halfScreenRadius, hits, lerp, pointSegmentDistance } from './fieldMath';
 import { chooseMissileTarget, tickMissiles } from './missiles';
+import { warpPace } from './pace';
 import { burst, explode, pushParticle } from './particles';
 import { driftStars, seedStars } from './stars';
 import { DEFAULT_SHIP } from './ships';
@@ -391,10 +391,6 @@ function tickPowers(state: GameState, dt: number): void {
   state.sectorBanner = Math.max(0, state.sectorBanner - dt);
   if (state.shieldTimer > 0) state.shieldTimer = Math.max(0, state.shieldTimer - dt);
   normalizeShield(state);
-}
-
-function warpPace(state: GameState): number {
-  return state.warpTimer > 0 ? WARP_SCALE : 1;
 }
 
 /** Powers that still take the single active slot. Shield and warp are not in this list. */
