@@ -12,8 +12,11 @@ export const styles = StyleSheet.create({
   },
   fireZone: {
     position: 'absolute',
-    zIndex: 30,
-    backgroundColor: 'transparent',
+    zIndex: 40,
+    borderRadius: 999,
+    // A fully transparent box is skipped by iOS hit testing. This tint is enough
+    // for the finger to land on the node, and the press state paints over it.
+    backgroundColor: 'rgba(255, 90, 58, 0.08)',
   },
   laserStick: {
     position: 'absolute',

@@ -37,6 +37,71 @@ function clientInside(selector: string, clientX: number, clientY: number): boole
   return clientX >= rect.left && clientY >= rect.top && clientX <= rect.right && clientY <= rect.bottom;
 }
 
+function domElement(node: unknown): HTMLElement | null {
+  return node instanceof HTMLElement ? node : null;
+}
+
+const TOUCH_BUILD = 'touch-hit-1';
+let paintPressed: (down: boolean) => void = () => {};
+let rememberTouch: (line: string) => void = () => {};
+
+function bindFireElement(element: HTMLElement): void {
+  element.setAttribute('data-alien-fire', '1');
+  element.style.touchAction = 'none';
+  element.style.pointerEvents = 'auto';
+  element.style.zIndex = '40';
+  if (element.dataset.fireBound === '1') return;
+  element.dataset.fireBound = '1';
+  const localPoint = (touch: { clientX: number; clientY: number }) => {
+    const root = document.getElementById('alien-shooter-root');
+    const rect = root?.getBoundingClientRect();
+    return {
+      x: rect ? touch.clientX - rect.left : touch.clientX,
+      y: rect ? touch.clientY - rect.top : touch.clientY,
+    };
+  };
+  const start = (event: TouchEvent) => {
+    // passive:false so the browser delivers the touch to this node. Do not
+    // preventDefault here: iOS cancels the rest of the gesture when touchstart
+    // is cancelled, and the button then never sees the finger lift.
+    const handler = fireTouchHandler;
+    if (!handler) return;
+    for (const touch of Array.from(event.changedTouches)) {
+      const point = localPoint(touch);
+      handler(touch.identifier, point.x, point.y);
+    }
+    paintPressed(true);
+    rememberTouch(`button touchstart ids=${Array.from(event.changedTouches, (touch) => touch.identifier).join(',')}`);
+  };
+  const move = (event: TouchEvent) => {
+    if (event.cancelable) event.preventDefault();
+  };
+  const end = (event: TouchEvent) => {
+    const handler = fireReleaseHandler;
+    if (!handler) return;
+    const fromCancel = event.type === 'touchcancel';
+    for (const touch of Array.from(event.changedTouches)) handler(touch.identifier, fromCancel);
+    rememberTouch(`button ${event.type}`);
+  };
+  const listen: AddEventListenerOptions = { capture: true, passive: false };
+  element.addEventListener('touchstart', start, listen);
+  element.addEventListener('touchmove', move, listen);
+  element.addEventListener('touchend', end, listen);
+  element.addEventListener('touchcancel', end, listen);
+}
+
+function watchFireButtons(): () => void {
+  const scan = () => {
+    for (const node of document.querySelectorAll('[aria-label="Fire button"]')) {
+      if (node instanceof HTMLElement) bindFireElement(node);
+    }
+  };
+  scan();
+  const observer = new MutationObserver(scan);
+  observer.observe(document.body, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
 /** Tutorial cards and arrows must not eat a touch meant for the fire button. */
 export function markIgnoresPointer(node: unknown): void {
   const element = node as HTMLElement | null;
@@ -54,39 +119,9 @@ function slotIndex(target: EventTarget | null): number | null {
 }
 
 export function markFireZone(node: unknown): void {
-  const element = node as HTMLElement | null;
-  if (!element?.setAttribute || !element.addEventListener) return;
-  element.setAttribute('data-alien-fire', '1');
-  element.style.touchAction = 'none';
-  if (element.dataset.fireBound === '1') return;
-  element.dataset.fireBound = '1';
-  const localPoint = (touch: Touch) => {
-    const root = document.getElementById('alien-shooter-root');
-    const rect = root?.getBoundingClientRect();
-    return {
-      x: rect ? touch.clientX - rect.left : touch.clientX,
-      y: rect ? touch.clientY - rect.top : touch.clientY,
-    };
-  };
-  const start = (event: TouchEvent) => {
-    // preventDefault on touchstart makes iOS Safari cancel the gesture
-    // immediately, so a hold never lasts long enough to fire a bullet.
-    const handler = fireTouchHandler;
-    if (!handler) return;
-    for (const touch of Array.from(event.changedTouches)) {
-      const point = localPoint(touch);
-      handler(touch.identifier, point.x, point.y);
-    }
-  };
-  const end = (event: TouchEvent) => {
-    const handler = fireReleaseHandler;
-    if (!handler) return;
-    const fromCancel = event.type === 'touchcancel';
-    for (const touch of Array.from(event.changedTouches)) handler(touch.identifier, fromCancel);
-  };
-  element.addEventListener('touchstart', start, { passive: false });
-  element.addEventListener('touchend', end);
-  element.addEventListener('touchcancel', end);
+  const element = domElement(node);
+  if (!element) return;
+  bindFireElement(element);
 }
 
 let fireTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
@@ -141,10 +176,27 @@ export function bindControls(
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
+  const syncPressed = () => {
+    const node = document.querySelector('[data-alien-fire]');
+    if (!(node instanceof HTMLElement)) return;
+    if (controls.fireId != null) node.dataset.pressed = '1';
+    else delete node.dataset.pressed;
+  };
+  paintPressed = () => syncPressed();
+  const insideFire = (clientX: number, clientY: number) => {
+    if (clientInside('[data-alien-fire]', clientX, clientY)) return true;
+    const point = local(clientX, clientY);
+    return controls.onFireButton(point.x, point.y);
+  };
   const claimFireTouch = (id: number, x: number, y: number) => {
     if (isUiOpen()) return;
     const ship = getShip();
+    // One finger arrives as a pointer id and a different touch id. The touch
+    // id has to own the trigger, or the pointerup that follows releases it
+    // while the finger is still down.
+    if (controls.fireId != null && controls.fireId !== id) controls.pointerUp(controls.fireId);
     controls.claimFire(id, x, y, ship.x, ship.y);
+    syncPressed();
     try {
       onPress();
     } catch {
@@ -157,6 +209,7 @@ export function bindControls(
     // iOS cancels the touch event while the pointer is still held down.
     if (fromCancel && touchPointers.has(id)) return;
     controls.pointerUp(id);
+    syncPressed();
   };
   laserTouchHandler = (id, x, y) => {
     if (isUiOpen() || !controls.laserArmed()) return false;
@@ -212,12 +265,29 @@ export function bindControls(
     return decision.play;
   };
 
+  const describe = (target: EventTarget | null, x: number, y: number) => {
+    const node = target instanceof Element ? target : null;
+    const name = node?.getAttribute('aria-label') || node?.id || node?.tagName || 'none';
+    const hit = document.elementFromPoint(x, y);
+    const hitName = hit?.getAttribute('aria-label') || hit?.id || hit?.tagName || 'none';
+    const owned = node?.closest('[data-alien-fire]') ? 'on-fire' : 'not-fire';
+    return `${name} ${owned} hit=${hitName} @${Math.round(x)},${Math.round(y)}`;
+  };
   const onTouchStart = (event: TouchEvent) => {
-    if (touchPointers.size > 0) return;
+    for (const touch of Array.from(event.changedTouches)) {
+      rememberTouch(`touchstart id=${touch.identifier} ${describe(touch.target, touch.clientX, touch.clientY)}`);
+    }
     if (isUiOpen()) return;
     let play = false;
     const sole = event.changedTouches.length === 1;
     for (const touch of Array.from(event.changedTouches)) {
+      if (insideFire(touch.clientX, touch.clientY)) {
+        const point = local(touch.clientX, touch.clientY);
+        claimFireTouch(touch.identifier, point.x, point.y);
+        continue;
+      }
+      // A pointer event already claimed this finger. Don't also start a drag.
+      if (touchPointers.size > 0) continue;
       const target = touch.target ?? (sole ? event.target : null);
       if (contactDown(touch.identifier, touch.clientX, touch.clientY, target)) play = true;
     }
@@ -247,7 +317,11 @@ export function bindControls(
   };
 
   const onTouchEnd = (event: TouchEvent) => {
-    if (touchPointers.size > 0) return;
+    for (const touch of Array.from(event.changedTouches)) {
+      rememberTouch(`${event.type} id=${touch.identifier} ${describe(touch.target, touch.clientX, touch.clientY)}`);
+    }
+    const endsFire = Array.from(event.changedTouches).some((touch) => controls.fireId === touch.identifier);
+    if (touchPointers.size > 0 && !endsFire) return;
     // Cancelling touchend suppresses the click mobile browsers send to a button.
     const onUi = uiNode(event.target);
     const onSlot = slotIndex(event.target) != null;
@@ -261,23 +335,25 @@ export function bindControls(
       const live = Array.from(event.touches, (touch) => touch.identifier);
       if (!live.includes(controls.fireId)) live.push(controls.fireId);
       controls.syncTouches(live);
+      syncPressed();
       return;
     }
     // A cancel often arrives with no remaining touches. Drop anything the browser no longer lists.
     syncLiveTouches(event);
+    syncPressed();
   };
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      rememberTouch(`pointerdown id=${event.pointerId} ${describe(event.target, event.clientX, event.clientY)}`);
       if (isUiOpen()) return;
       touchPointers.add(event.pointerId);
-      const node = event.target;
-      if (node instanceof Element) {
-        try {
-          node.setPointerCapture(event.pointerId);
-        } catch {
-          // Capture can fail when the target is not connected. The id is still tracked.
-        }
+      // setPointerCapture on a touch pointer makes iOS cancel the gesture, so
+      // the fire button never hears the finger. Window listeners already follow it.
+      if (insideFire(event.clientX, event.clientY) || fireZone(event.target)) {
+        const point = local(event.clientX, event.clientY);
+        claimFireTouch(event.pointerId, point.x, point.y);
+        return;
       }
       if (contactDown(event.pointerId, event.clientX, event.clientY, event.target)) {
         try {
@@ -341,7 +417,14 @@ export function bindControls(
   const onPointerUp = (event: PointerEvent) => {
     if (event.pointerType === 'touch' || event.pointerType === 'pen') {
       touchPointers.delete(event.pointerId);
+      // The touch event took over the trigger with its own id. This pointerup
+      // belongs to the other id and must not release the shot.
+      if (controls.fireId != null && controls.fireId !== event.pointerId) {
+        syncPressed();
+        return;
+      }
       controls.pointerUp(event.pointerId);
+      syncPressed();
       return;
     }
     if (event.pointerType !== 'mouse' || isUiOpen()) return;
@@ -369,6 +452,31 @@ export function bindControls(
   const onVisibility = () => releaseAll();
   const onPageHide = () => releaseAll();
 
+  if (!document.getElementById('alien-fire-press-style')) {
+    const style = document.createElement('style');
+    style.id = 'alien-fire-press-style';
+    style.textContent = '[data-alien-fire][data-pressed="1"]{background:rgba(255,90,58,.92)!important;box-shadow:inset 0 0 0 4px #fff6c8}';
+    document.head.appendChild(style);
+  }
+  const debugOn = new URLSearchParams(window.location.search).get('debugTouch') === '1';
+  const debugLines: string[] = [];
+  let debugPanel: HTMLDivElement | null = null;
+  rememberTouch = (line: string) => {
+    if (!debugOn) return;
+    debugLines.unshift(line);
+    if (debugLines.length > 8) debugLines.length = 8;
+    if (!debugPanel) {
+      debugPanel = document.createElement('div');
+      debugPanel.id = 'alien-touch-debug';
+      debugPanel.setAttribute('data-alien-touch-debug', '1');
+      debugPanel.style.cssText =
+        'position:fixed;left:8px;right:8px;top:8px;z-index:80;pointer-events:none;background:rgba(0,0,0,.78);color:#d5f7ff;font:12px/1.35 ui-monospace,monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap;';
+      document.body.appendChild(debugPanel);
+    }
+    const bound = document.querySelector('[data-alien-fire]')?.getAttribute('data-fire-bound') ?? 'missing';
+    debugPanel.textContent = [`build ${TOUCH_BUILD} fireBound=${bound}`, ...debugLines].join('\n');
+  };
+  const stopWatchingFire = watchFireButtons();
   const touchOptions: AddEventListenerOptions = { capture: true, passive: false };
   window.addEventListener('touchstart', onTouchStart, touchOptions);
   window.addEventListener('touchmove', onTouchMove, touchOptions);
@@ -386,6 +494,10 @@ export function bindControls(
   document.addEventListener('visibilitychange', onVisibility);
 
   return () => {
+    stopWatchingFire();
+    rememberTouch = () => {};
+    paintPressed = () => {};
+    debugPanel?.remove();
     fireTouchHandler = null;
     fireReleaseHandler = null;
     laserTouchHandler = null;

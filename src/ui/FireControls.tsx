@@ -1,5 +1,5 @@
 import { markFireZone, markIgnoresPointer, markLaserZone } from '../web/bindControls';
-import { elementBounds, laserStickRect, type Field, type HudLayout } from './hudLayout';
+import { elementBounds, FIRE_HIT_SLOP, laserStickRect, type Field, type HudLayout } from './hudLayout';
 import { styles } from './hudStyles';
 import { Text, View } from 'react-native';
 
@@ -76,13 +76,22 @@ export function FireCatcher({ layout, field }: { layout: HudLayout; field: Field
   const fire = layout.elements.find((element) => element.id === 'fire');
   if (!fire?.visible) return null;
   const bounds = elementBounds(fire, field, 1);
+  const slop = FIRE_HIT_SLOP;
   return (
     <View
       ref={markFireZone}
       collapsable={false}
       pointerEvents="auto"
       accessibilityLabel="Fire button"
-      style={[styles.fireZone, { left: bounds.x, top: bounds.y, width: bounds.w, height: bounds.h }]}
+      style={[
+        styles.fireZone,
+        {
+          left: bounds.x - slop,
+          top: bounds.y - slop,
+          width: bounds.w + slop * 2,
+          height: bounds.h + slop,
+        },
+      ]}
     />
   );
 }
