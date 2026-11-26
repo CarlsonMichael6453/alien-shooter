@@ -569,6 +569,36 @@ describe('simulation', () => {
     step(state, idleIntent(), 0.05);
     assert.equal(state.missiles[0]?.targetId, far.id);
   });
+
+  it('pauses at 10000 points, then doubles the fire rate for the rest of that run', () => {
+    const state = playing();
+    state.score = 10000;
+    step(state, idleIntent({ firing: true }), 0.016);
+    assert.equal(state.weaponsUpgrade, true);
+    assert.ok(state.upgradeFlash > 1.4);
+    assert.equal(state.shotsFired, 0);
+    for (let i = 0; i < 30; i += 1) step(state, idleIntent({ firing: true }), 0.05);
+    assert.equal(state.upgradeFlash, 0);
+    const before = state.shotsFired;
+    step(state, idleIntent({ firing: true }), 0.016);
+    assert.equal(state.shotsFired, before + 1);
+    state.rapidTimer = 5;
+    state.fireCooldown = 0;
+    const rapidBefore = state.shotsFired;
+    step(state, idleIntent({ firing: true }), 0.03);
+    assert.ok(state.shotsFired >= rapidBefore + 2, `rapid upgrade shots ${rapidBefore} -> ${state.shotsFired}`);
+    state.mode = 'over';
+    state.overTimer = 1;
+    step(state, idleIntent({ restart: true }), 0.05);
+    assert.equal(state.weaponsUpgrade, false);
+    assert.equal(state.upgradeFlash, 0);
+    const campaign = playing();
+    campaign.runKind = 'campaign';
+    campaign.score = 10000;
+    step(campaign, idleIntent({ firing: true }), 0.05);
+    assert.equal(campaign.weaponsUpgrade, false);
+    assert.equal(campaign.shotsFired, 1);
+  });
 });
 
 function normalizeAngle(angle: number): number {

@@ -40,6 +40,7 @@ export interface HudModel {
   sectorName: string;
   story: string;
   sectorBanner: number;
+  upgradeFlash: number;
   bossHp: number;
   bossMax: number;
   shieldTimer: number;
@@ -205,7 +206,7 @@ export function Overlay({
         <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} armed />
       ) : null}
 
-      {playing && ui === 'none' && cue && !model.story ? (
+      {playing && ui === 'none' && cue && !model.story && model.upgradeFlash <= 0 ? (
         <TutorialPrompt
           cue={cue}
           field={field}
@@ -229,7 +230,13 @@ export function Overlay({
           </View>
         </View>
       ) : null}
-      {model.mode === 'playing' && (model.sectorBanner > 0.15 || model.story) ? (
+      {model.mode === 'playing' && model.upgradeFlash > 0 ? (
+        <View pointerEvents="none" style={styles.bannerWrap}>
+          <Text style={styles.kicker}>ENDLESS</Text>
+          <Text style={styles.bannerTitle}>WEAPONS UPGRADE</Text>
+        </View>
+      ) : null}
+      {model.mode === 'playing' && model.upgradeFlash <= 0 && (model.sectorBanner > 0.15 || model.story) ? (
         <View pointerEvents="none" style={styles.bannerWrap}>
           <Text style={styles.kicker}>{model.story ? model.sectorName.toUpperCase() : `WAVE ${model.wave}`}</Text>
           <Text style={[styles.bannerTitle, model.story ? { fontSize: 18, letterSpacing: 0, lineHeight: 24 } : null]}>

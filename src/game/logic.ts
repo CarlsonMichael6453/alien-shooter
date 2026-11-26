@@ -139,6 +139,8 @@ export function createGame(
     shake: 0,
     muzzle: 0,
     fireCooldown: 0,
+    weaponsUpgrade: false,
+    upgradeFlash: 0,
     spawnCooldown: 0.55,
     shotsFired: 0,
     overTimer: 0,
@@ -284,6 +286,16 @@ export function step(state: GameState, intent: Intent, dt: number): void {
   }
 
   state.time += frame;
+  if (state.mode === 'playing' && state.runKind !== 'campaign' && state.score >= 10000 && !state.weaponsUpgrade) {
+    state.weaponsUpgrade = true;
+    state.upgradeFlash = 1.5;
+  }
+  if (state.upgradeFlash > 0) {
+    state.upgradeFlash = Math.max(0, state.upgradeFlash - frame);
+    decayJuice(state, frame);
+    driftStars(state, frame);
+    return;
+  }
   decayJuice(state, frame);
   moveShip(state, intent, frame);
   updateAim(state, intent);
@@ -348,6 +360,8 @@ function restart(state: GameState): void {
   state.shake = 0;
   state.muzzle = 0;
   state.fireCooldown = 0;
+  state.weaponsUpgrade = false;
+  state.upgradeFlash = 0;
   state.spawnCooldown = 0.55;
   state.ammoCooldown = AMMO_FIRST_DELAY;
   state.powerCooldown = 8;
@@ -551,7 +565,7 @@ function fire(state: GameState, intent: Intent, dt: number): void {
     return;
   }
 
-  const interval = FIRE_INTERVAL / (rapid ? RAPID_RATE : 1);
+  const interval = (state.weaponsUpgrade ? FIRE_INTERVAL / 2 : FIRE_INTERVAL) / (rapid ? RAPID_RATE : 1);
   let guard = 0;
   while (state.fireCooldown <= 0 && state.bullets.length < MAX_BULLETS && (rapid || state.ammo > 0) && guard < 6) {
     const spread = rapid ? (state.rng.next() - 0.5) * RAPID_CONE : 0;
