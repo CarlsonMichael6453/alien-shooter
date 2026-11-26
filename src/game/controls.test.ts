@@ -153,6 +153,42 @@ describe('two-finger controls', () => {
     assert.equal(controls.consumePower(), 1);
   });
 
+  it('accepts an iOS touch id, which is a large negative number', () => {
+    const ios = -1564415210;
+    const controls = new Controls();
+    controls.setScheme('drag');
+    const fire = { x: 300, y: 500, w: 120, h: 100 };
+    controls.setActionRects(null, fire);
+    assert.equal(controls.pointerDown(ios, 340, 540, 100, 300), 'play');
+    assert.equal(controls.fireId, ios);
+    assert.equal(controls.frame().firing, true);
+    controls.pointerUp(ios);
+    assert.equal(controls.fireId, null);
+    assert.equal(controls.frame().firing, false);
+
+    controls.pointerDown(4, 20, 200, 100, 300);
+    controls.claimFire(ios, 340, 540, 100, 300);
+    assert.equal(controls.fireId, ios);
+    assert.equal(controls.moveId, 4);
+    assert.equal(controls.frame().firing, true);
+    controls.syncTouches([4]);
+    assert.equal(controls.fireId, null);
+
+    controls.mouseDown(2, 340, 540, 100, 300);
+    assert.equal(controls.fireId, -2);
+    controls.syncTouches([]);
+    assert.equal(controls.fireId, -2);
+    assert.equal(controls.frame().firing, true);
+    controls.mouseUp(2);
+    assert.equal(controls.fireId, null);
+
+    controls.setScheme('joystick');
+    controls.setActionRects({ x: 16, y: 500, w: 118, h: 118 }, fire);
+    assert.equal(controls.pointerDown(ios, 40, 540, 100, 300), 'play');
+    assert.equal(controls.moveId, ios);
+    assert.equal(controls.frame().moveActive, false);
+  });
+
   it('claims the fire hit zone even if that finger was first seen as a drag', () => {
     const controls = new Controls();
     controls.setScheme('drag');
