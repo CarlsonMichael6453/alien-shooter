@@ -42,6 +42,7 @@ import {
 } from './constants';
 import { createRng } from './rng';
 import { bossBulletSpeed, bossHealth, nextBossScore, sectorTheme } from './sectors';
+import { CAMPAIGN_SECTORS, tickCampaign } from './campaign';
 import { clamp, easeOut, halfScreenRadius, hits, lerp, pointSegmentDistance } from './fieldMath';
 import { beamNose } from './beam';
 import { collide } from './combat';
@@ -119,6 +120,11 @@ export function createGame(
 ): GameState {
   const state: GameState = {
     mode: 'ready',
+    runKind: 'endless',
+    campaignSector: 0,
+    campaignCleared: false,
+    introText: '',
+    introTimer: 0,
     width,
     height,
     time: 0,
@@ -302,6 +308,8 @@ export function step(state: GameState, intent: Intent, dt: number): void {
 }
 
 function restart(state: GameState): void {
+  const campaign = state.runKind === 'campaign';
+  const sector = state.campaignSector;
   state.mode = 'playing';
   state.time = 0;
   state.score = 0;
@@ -319,8 +327,13 @@ function restart(state: GameState): void {
   state.missileLeft = 0;
   state.missileCooldown = 0;
   state.missiles = [];
-  state.sector = 0;
-  state.bossScore = nextBossScore(0);
+  state.runKind = campaign ? 'campaign' : 'endless';
+  state.campaignSector = campaign ? sector : 0;
+  state.campaignCleared = false;
+  state.sector = campaign ? sector : 0;
+  state.introText = campaign ? CAMPAIGN_SECTORS[sector]?.intro ?? '' : '';
+  state.introTimer = campaign ? 2.6 : 0;
+  state.bossScore = nextBossScore(state.sector);
   state.sectorBanner = SECTOR_BANNER;
   state.wave = 1;
   state.waveSpawned = 0;
@@ -560,6 +573,7 @@ function fire(state: GameState, intent: Intent, dt: number): void {
 }
 
 export function quitToMenu(state: GameState): void {
+  state.runKind = 'endless';
   restart(state);
   state.mode = 'ready';
   state.sectorBanner = 0;
@@ -567,6 +581,10 @@ export function quitToMenu(state: GameState): void {
 }
 
 function spawnEnemies(state: GameState, dt: number): void {
+  if (state.runKind === 'campaign') {
+    tickCampaign(state, dt);
+    return;
+  }
   if (state.waveBreak > 0) {
     state.waveBreak = Math.max(0, state.waveBreak - dt);
     if (state.waveBreak === 0) beginWave(state);

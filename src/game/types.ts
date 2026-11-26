@@ -129,6 +129,12 @@ export interface Star {
 
 export interface GameState {
   mode: Mode;
+  /** Endless is the default run. Campaign is a separate five-sector trip. */
+  runKind: 'endless' | 'campaign';
+  campaignSector: number;
+  campaignCleared: boolean;
+  introText: string;
+  introTimer: number;
   width: number;
   height: number;
   time: number;

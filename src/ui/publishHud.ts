@@ -1,3 +1,4 @@
+import { CAMPAIGN_SECTORS } from '../game/campaign';
 import { sectorTheme } from '../game/sectors';
 import type { GameState } from '../game/types';
 import type { ControlScheme } from './controlsMode';
@@ -26,7 +27,11 @@ export function publishHud(
     state.missiles.length > 0 ||
     state.bomb != null ||
     state.blast != null;
-  const sectorName = sectorTheme(state.sector).name;
+  const sectorName =
+    state.runKind === 'campaign'
+      ? (CAMPAIGN_SECTORS[state.campaignSector]?.name ?? 'Campaign')
+      : sectorTheme(state.sector).name;
+  const story = state.introTimer > 0 || state.campaignCleared ? state.introText : '';
   const hint =
     state.mode !== 'playing'
       ? null
@@ -58,6 +63,7 @@ export function publishHud(
     prev.wave === state.wave &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
     prev.sectorName === sectorName &&
+    prev.story === story &&
     prev.bossHp === (state.boss?.hp ?? 0) &&
     Math.abs(prev.stickX - stickX) < 0.02 &&
     Math.abs(prev.stickY - stickY) < 0.02 &&
@@ -84,6 +90,7 @@ export function publishHud(
     laserTimer: state.laserTimer,
     hint,
     sectorName,
+    story,
     sectorBanner: state.sectorBanner,
     bossHp: state.boss?.hp ?? 0,
     bossMax: state.boss?.maxHp ?? 0,
