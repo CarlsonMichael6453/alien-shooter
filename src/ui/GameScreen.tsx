@@ -22,7 +22,7 @@ import { installWebGestureLock } from '../web/gestureLock';
 import { pulseHaptic } from './haptics';
 import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
 import { beginCampaign, campaignUnlocked as campaignIsOpen, devCampaignFromLocation, loadCampaign, saveCampaign, type CampaignProgress } from '../game/campaign';
-import { EMPTY_ENTITLEMENTS, devUnlockAllFromLocation, type Entitlements } from '../game/premium';
+import { EMPTY_ENTITLEMENTS, rememberTestMode, testModeActive, type Entitlements } from '../game/premium';
 import { FRESH_PROFILE, loadProfile, playableShipId, recordRun, saveProfile, selectShip, type Profile } from './profile';
 import { Overlay, type HudModel, type UiMode } from './Hud';
 import { publishDebug } from './gameDebug';
@@ -145,6 +145,7 @@ export function GameScreen() {
   const profileRef = useRef<Profile>(FRESH_PROFILE);
   const [entitlements, setEntitlements] = useState<Entitlements>(EMPTY_ENTITLEMENTS);
   const [campaignDev, setCampaignDev] = useState(false);
+  const [testMode, setTestMode] = useState(false);
   const campaignRef = useRef<CampaignProgress>({ sector: 0, cleared: false });
   const entitlementsRef = useRef<Entitlements>(EMPTY_ENTITLEMENTS);
   entitlementsRef.current = entitlements;
@@ -179,12 +180,18 @@ export function GameScreen() {
 
   useEffect(() => {
     if (Platform.OS === 'web') audio.installUnlock();
-    if (Platform.OS === 'web' && devUnlockAllFromLocation(globalThis.location?.search ?? '')) {
+    if (Platform.OS !== 'web') return;
+    const search = globalThis.location?.search ?? '';
+    if (testModeActive(search)) {
+      rememberTestMode(true);
       const next = { owned: [], unlockAll: true };
       entitlementsRef.current = next;
       setEntitlements(next);
+      setCampaignDev(true);
+      setTestMode(true);
+    } else if (devCampaignFromLocation(search)) {
+      setCampaignDev(true);
     }
-    if (Platform.OS === 'web' && devCampaignFromLocation(globalThis.location?.search ?? '')) setCampaignDev(true);
   }, []);
 
   useEffect(() => {
@@ -642,6 +649,7 @@ export function GameScreen() {
               }
             }}
             campaignUnlocked={campaignIsOpen(profile.bestScore, campaignDev || entitlements.unlockAll)}
+            testMode={testMode}
             onPause={() => openUi('pause', 'none')}
             onResume={() => openUi('none')}
             onQuit={() => {

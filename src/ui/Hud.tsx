@@ -96,6 +96,7 @@ interface Props {
   onPlay: () => void;
   onCampaign: () => void;
   campaignUnlocked: boolean;
+  testMode: boolean;
   onPause: () => void;
   onResume: () => void;
   onQuit: () => void;
@@ -152,6 +153,7 @@ export function Overlay({
   onPlay,
   onCampaign,
   campaignUnlocked,
+  testMode,
   onPause,
   onResume,
   onQuit,
@@ -201,6 +203,11 @@ export function Overlay({
             );
           })
         : null}
+      {testMode ? (
+        <Text pointerEvents="none" style={styles.testMode}>
+          TEST MODE
+        </Text>
+      ) : null}
       {playing && !editing ? <FireCatcher layout={layout} field={field} /> : null}
       {playing && model.laserTimer > 0 ? (
         <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} armed />

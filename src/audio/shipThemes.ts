@@ -33,3 +33,37 @@ export function shipMusic(id: string): ShipMusic {
 export function musicChangesWithShip(previous: string, next: string): boolean {
   return shipMusic(previous).id !== shipMusic(next).id;
 }
+
+/** Classic pew: a fast drop from about 1200 Hz to about 200 Hz. Ship themes scale both ends. */
+export function pewSweep(shipId: string): { from: number; to: number; dur: number } {
+  const tint = shipMusic(shipId).shoot / 640;
+  return { from: 1200 * tint, to: 200 * tint, dur: 0.1 };
+}
+
+/** Rapid fire is every 0.02s. A new pew closer than this stacks into a harsh buzz. */
+export const PEW_GAP = 0.05;
+
+export function pewAllowed(lastAt: number, now: number, gap = PEW_GAP): boolean {
+  return now - lastAt >= gap;
+}
+
+/**
+ * Notes to start on this tick. A clock left behind while the run was over
+ * must jump to now. Replaying every missed beat schedules a burst that
+ * throws and then keeps failing, so music and shots go silent on the next run.
+ */
+export function musicNotesDue(
+  nextBeat: number,
+  now: number,
+  interval: number,
+  lookahead = 0.35,
+): { count: number; next: number } {
+  let beat = Number.isFinite(nextBeat) && nextBeat >= now ? nextBeat : now;
+  let count = 0;
+  const horizon = now + lookahead;
+  while (beat < horizon && count < 8) {
+    beat += interval;
+    count += 1;
+  }
+  return { count, next: beat };
+}
