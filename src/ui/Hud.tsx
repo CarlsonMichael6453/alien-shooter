@@ -38,6 +38,7 @@ export interface HudModel {
   laserTimer: number;
   hint: string | null;
   sectorName: string;
+  story: string;
   sectorBanner: number;
   bossHp: number;
   bossMax: number;
@@ -92,6 +93,8 @@ interface Props {
   profile: Profile;
   entitlements: Entitlements;
   onPlay: () => void;
+  onCampaign: () => void;
+  campaignUnlocked: boolean;
   onPause: () => void;
   onResume: () => void;
   onQuit: () => void;
@@ -146,6 +149,8 @@ export function Overlay({
   profile,
   entitlements,
   onPlay,
+  onCampaign,
+  campaignUnlocked,
   onPause,
   onResume,
   onQuit,
@@ -200,7 +205,7 @@ export function Overlay({
         <LaserAimStick field={field} layout={layout} aimX={model.laserAimX} aimY={model.laserAimY} hint={model.laserHint} armed />
       ) : null}
 
-      {playing && ui === 'none' && cue ? (
+      {playing && ui === 'none' && cue && !model.story ? (
         <TutorialPrompt
           cue={cue}
           field={field}
@@ -224,14 +229,24 @@ export function Overlay({
           </View>
         </View>
       ) : null}
-      {model.mode === 'playing' && model.sectorBanner > 0.15 ? (
+      {model.mode === 'playing' && (model.sectorBanner > 0.15 || model.story) ? (
         <View pointerEvents="none" style={styles.bannerWrap}>
-          <Text style={styles.kicker}>WAVE {model.wave}</Text>
-          <Text style={styles.bannerTitle}>{model.sectorName.toUpperCase()}</Text>
+          <Text style={styles.kicker}>{model.story ? model.sectorName.toUpperCase() : `WAVE ${model.wave}`}</Text>
+          <Text style={[styles.bannerTitle, model.story ? { fontSize: 18, letterSpacing: 0, lineHeight: 24 } : null]}>
+            {model.story || model.sectorName.toUpperCase()}
+          </Text>
         </View>
       ) : null}
       {model.mode === 'ready' && ui === 'none' ? (
-        <MainMenu onPlay={onPlay} onShips={onOpenShips} onScores={onOpenScores} onSettings={onOpenSettings} onPrivacy={onOpenPrivacy} />
+        <MainMenu
+          onPlay={onPlay}
+          onCampaign={onCampaign}
+          campaignUnlocked={campaignUnlocked}
+          onShips={onOpenShips}
+          onScores={onOpenScores}
+          onSettings={onOpenSettings}
+          onPrivacy={onOpenPrivacy}
+        />
       ) : null}
       {model.mode === 'over' && ui === 'none' ? <GameOver model={model} /> : null}
       {ratingOffer && model.mode === 'over' && ui === 'none' ? (

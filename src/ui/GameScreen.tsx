@@ -21,6 +21,7 @@ import { bindControls } from '../web/bindControls';
 import { installWebGestureLock } from '../web/gestureLock';
 import { pulseHaptic } from './haptics';
 import { ArenaPickups, type ArenaPickupHandle } from './AbilityGlyph';
+import { beginCampaign, campaignUnlocked as campaignIsOpen, devCampaignFromLocation, loadCampaign, saveCampaign, type CampaignProgress } from '../game/campaign';
 import { EMPTY_ENTITLEMENTS, devUnlockAllFromLocation, type Entitlements } from '../game/premium';
 import { FRESH_PROFILE, loadProfile, playableShipId, recordRun, saveProfile, selectShip, type Profile } from './profile';
 import { Overlay, type HudModel, type UiMode } from './Hud';
@@ -88,6 +89,7 @@ const INITIAL_HUD: HudModel = {
   laserTimer: 0,
   hint: null,
   sectorName: 'Deep Space',
+  story: '',
   sectorBanner: 0,
   bossHp: 0,
   bossMax: 0,
@@ -141,6 +143,8 @@ export function GameScreen() {
   const [profile, setProfile] = useState<Profile>(FRESH_PROFILE);
   const profileRef = useRef<Profile>(FRESH_PROFILE);
   const [entitlements, setEntitlements] = useState<Entitlements>(EMPTY_ENTITLEMENTS);
+  const [campaignDev, setCampaignDev] = useState(false);
+  const campaignRef = useRef<CampaignProgress>({ sector: 0, cleared: false });
   const entitlementsRef = useRef<Entitlements>(EMPTY_ENTITLEMENTS);
   entitlementsRef.current = entitlements;
   const returnRef = useRef<UiMode>('none');
@@ -179,6 +183,7 @@ export function GameScreen() {
       entitlementsRef.current = next;
       setEntitlements(next);
     }
+    if (Platform.OS === 'web' && devCampaignFromLocation(globalThis.location?.search ?? '')) setCampaignDev(true);
   }, []);
 
   useEffect(() => {
@@ -237,7 +242,7 @@ export function GameScreen() {
     let cancel = false;
     const store = storeRef.current;
     void (async () => {
-      const [progress, saved, rating, audioSettings, savedScheme, savedProfile, laserSeen] = await Promise.all([
+      const [progress, saved, rating, audioSettings, savedScheme, savedProfile, laserSeen, campaignSaved] = await Promise.all([
         loadTutorial(store),
         loadLayout(store),
         loadRatingMemory(store),
@@ -245,9 +250,11 @@ export function GameScreen() {
         loadControlScheme(store),
         loadProfile(store),
         loadLaserHintSeen(store),
+        loadCampaign(store),
       ]);
       if (cancel) return;
       laserHintSeenRef.current = laserSeen;
+      campaignRef.current = campaignSaved;
       tutorialRef.current = progress;
       savedLayoutRef.current = saved;
       ratingRef.current = rating;
@@ -355,6 +362,13 @@ export function GameScreen() {
           startRef.current = false;
           restartRef.current = false;
           if (restarting) controlsRef.current.reanchor(state.shipX, state.shipY);
+          if (state.runKind === 'campaign') {
+            const progress = { sector: state.campaignSector, cleared: state.campaignCleared };
+            if (progress.sector !== campaignRef.current.sector || progress.cleared !== campaignRef.current.cleared) {
+              campaignRef.current = progress;
+              void saveCampaign(storeRef.current, progress);
+            }
+          }
           const aiming = state.laserTimer > 0;
           if (aiming && !laserWasOnRef.current && !laserHintSeenRef.current) {
             laserHintOnRef.current = true;
@@ -603,6 +617,8 @@ export function GameScreen() {
             profile={profile}
             entitlements={entitlements}
             onPlay={() => {
+              const current = stateRef.current;
+              if (current) current.runKind = 'endless';
               startRef.current = true;
               if (Platform.OS === 'web') {
                 try {
@@ -612,6 +628,19 @@ export function GameScreen() {
                 }
               }
             }}
+            onCampaign={() => {
+              const current = stateRef.current;
+              if (!current) return;
+              beginCampaign(current, campaignRef.current.cleared ? 0 : campaignRef.current.sector);
+              if (Platform.OS === 'web') {
+                try {
+                  audio.unlock();
+                } catch {
+                  // Starting the audio context must not block Campaign.
+                }
+              }
+            }}
+            campaignUnlocked={campaignIsOpen(profile.bestScore, campaignDev || entitlements.unlockAll)}
             onPause={() => openUi('pause', 'none')}
             onResume={() => openUi('none')}
             onQuit={() => {

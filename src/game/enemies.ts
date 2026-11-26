@@ -1,6 +1,7 @@
 import { BATTLESHIP_HP, BULLET_SPEED, CARRIER_HP, MAX_BULLETS, SECTOR_BANNER, WINGMAN_INTERVAL } from './constants';
 import { explode } from './particles';
 import { warpPace } from './pace';
+import { onCampaignBossDown } from './campaign';
 import { bossBulletSpeed, bossHealth, nextBossScore } from './sectors';
 import type { Enemy, GameState, PowerKind } from './types';
 import { WAVE_BREAK, bossSectorForWave } from './waves';
@@ -210,6 +211,11 @@ export function damageBoss(state: GameState, amount: number): void {
   const y = boss.y;
   state.boss = null;
   state.enemyBullets = [];
+  if (state.runKind === 'campaign') {
+    onCampaignBossDown(state);
+    explode(state, x, y, '#F4FBFF');
+    return;
+  }
   state.sector += 1;
   state.bossScore = nextBossScore(state.sector);
   state.sectorBanner = SECTOR_BANNER;

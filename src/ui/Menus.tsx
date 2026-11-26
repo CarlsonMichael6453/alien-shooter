@@ -11,12 +11,16 @@ function markUi(node: unknown): void {
 
 export function MainMenu({
   onPlay,
+  onCampaign,
+  campaignUnlocked,
   onShips,
   onScores,
   onSettings,
   onPrivacy,
 }: {
   onPlay: () => void;
+  onCampaign: () => void;
+  campaignUnlocked: boolean;
   onShips: () => void;
   onScores: () => void;
   onSettings: () => void;
@@ -30,6 +34,16 @@ export function MainMenu({
         <Text style={styles.body}>Drag to move. Hold the fire button. Pick up a power-up, then tap it.</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Play" onPress={onPlay} style={styles.primary}>
           <Text style={styles.primaryText}>PLAY</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={campaignUnlocked ? 'Campaign' : 'Reach 5,000 to unlock'}
+          accessibilityState={{ disabled: !campaignUnlocked }}
+          disabled={!campaignUnlocked}
+          onPress={onCampaign}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>{campaignUnlocked ? 'Campaign' : 'Reach 5,000 to unlock'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onShips} style={styles.button}>
           <Text style={styles.buttonText}>Ships</Text>
