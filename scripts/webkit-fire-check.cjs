@@ -62,7 +62,7 @@ async function main() {
   try {
     await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1&debugTouch=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__ALIEN__ && window.__ALIEN__.snapshot().width > 0);
-    await page.getByRole('button', { name: 'Play' }).tap();
+    await page.getByRole('button', { name: 'Endless' }).tap();
     await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing');
 
     // First frame of play, tutorial still up. A real WebKit tap at the button.
