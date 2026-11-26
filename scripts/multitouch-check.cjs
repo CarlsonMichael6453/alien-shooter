@@ -8,7 +8,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { chromium, devices } = require('playwright-core');
+const { chromium, devices, webkit } = require('playwright-core');
 
 const root = path.resolve('dist');
 const prefix = '/alien-shooter';
@@ -65,6 +65,21 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function viewportLock(page) {
+  return page.evaluate(() => {
+    const view = window.visualViewport;
+    return {
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      scale: view ? view.scale : 1,
+      offsetLeft: view ? view.offsetLeft : 0,
+      offsetTop: view ? view.offsetTop : 0,
+      width: view ? view.width : window.innerWidth,
+      height: view ? view.height : window.innerHeight,
+    };
+  });
+}
+
 async function touch(client, type, points) {
   await client.send('Input.dispatchTouchEvent', {
     type,
@@ -78,6 +93,43 @@ async function touch(client, type, points) {
       force: 0.8,
     })),
   });
+}
+
+async function webkitFireTap() {
+  const browser = await webkit.launch({ headless: true });
+  const context = await browser.newContext({
+    ...devices['iPhone 13'],
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__ALIEN__ && window.__ALIEN__.snapshot().width > 0);
+    const play = page.getByRole('button', { name: 'Play' });
+    await play.waitFor({ state: 'visible' });
+    const playBox = await play.boundingBox();
+    assert(playBox, 'Play button has no on-screen box');
+    await page.touchscreen.tap(playBox.x + playBox.width / 2, playBox.y + playBox.height / 2);
+    await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing', null, { timeout: 3000 });
+    const fireButton = page.getByLabel('Fire button', { exact: true });
+    await fireButton.waitFor({ state: 'visible' });
+    const fireBox = await fireButton.boundingBox();
+    assert(fireBox, 'Fire button has no on-screen box');
+    const x = fireBox.x + fireBox.width / 2;
+    const y = fireBox.y + fireBox.height / 2;
+    const viewport = page.viewportSize();
+    assert(viewport && x >= 0 && y >= 0 && x < viewport.width && y < viewport.height, `webkit fire tap (${x}, ${y}) is outside the viewport`);
+    const before = await page.evaluate(() => window.__ALIEN__.snapshot());
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => window.__ALIEN__.snapshot());
+    assert(after.shotsFired >= before.shotsFired + 1, `webkit tap shots ${before.shotsFired} -> ${after.shotsFired}`);
+    assert(after.ammo < before.ammo, `webkit tap ammo ${before.ammo} -> ${after.ammo}`);
+    return { ok: true, shots: after.shotsFired, ammo: after.ammo };
+  } finally {
+    await browser.close();
+  }
 }
 
 async function main() {
@@ -120,73 +172,107 @@ async function main() {
     assert(before.mode === 'ready', `expected ready, got ${before.mode}`);
     assert(before.shotsFired === 0, 'title screen should not be firing');
 
+    // The title screen is the Play menu. Start the way a player does: tap that button.
+    const play = page.getByRole('button', { name: 'Play' });
+    await play.waitFor({ state: 'visible' });
+    const playBox = await play.boundingBox();
+    assert(playBox, 'Play button has no on-screen box');
+    const playX = playBox.x + playBox.width / 2;
+    const playY = playBox.y + playBox.height / 2;
+    await touch(client, 'touchStart', [{ id: 1, x: playX, y: playY }]);
+    await touch(client, 'touchEnd', [{ id: 1, x: playX, y: playY }]);
+    await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing', null, { timeout: 3000 });
+    const started = await snap();
+    assert(started.mode === 'playing', 'Play button did not start the game');
+    assert(started.shotsFired === 0, 'starting the game fired a shot');
+
+    const viewport = page.viewportSize();
+    assert(viewport, 'missing viewport');
+    const pointInView = (x, y, label) => {
+      assert(
+        x >= 0 && y >= 0 && x < viewport.width && y < viewport.height,
+        `${label} (${x}, ${y}) is outside the ${viewport.width}x${viewport.height} viewport`,
+      );
+    };
+
     // One finger steers and must not fire.
-    await touch(client, 'touchStart', [{ id: 1, x: 180, y: 640 }]);
-    await touch(client, 'touchMove', [{ id: 1, x: 180, y: 520 }]);
+    const moveFrom = { x: 180, y: 640 };
+    const moveTo = { x: 180, y: 520 };
+    pointInView(moveFrom.x, moveFrom.y, 'move start');
+    pointInView(moveTo.x, moveTo.y, 'move end');
+    await touch(client, 'touchStart', [{ id: 1, ...moveFrom }]);
+    await touch(client, 'touchMove', [{ id: 1, ...moveTo }]);
     await page.waitForTimeout(280);
     const steered = await snap();
-    assert(steered.mode === 'playing', 'first touch should start the game');
-    assert(steered.moveId === 1, `move finger was ${steered.moveId}`);
-    assert(steered.fireId == null, 'one finger should not claim fire');
+    assert(steered.mode === 'playing', 'drag did not stay in play');
     assert(steered.firing === false, 'one finger should not fire');
     assert(steered.shotsFired === 0, `shots fired with one finger: ${steered.shotsFired}`);
-    assert(steered.shipY < before.shipY - 40, `ship did not follow the upward drag (${before.shipY} -> ${steered.shipY})`);
+    assert(steered.ammo === started.ammo, 'one finger spent ammo');
+    assert(steered.shipY < started.shipY - 40, `ship did not follow the upward drag (${started.shipY} -> ${steered.shipY})`);
 
-    await page.evaluate(() => {
-      document.addEventListener(
-        'touchmove',
-        (event) => {
-          window.__lastDefaultPrevented = event.defaultPrevented;
-        },
-        true,
-      );
-    });
-
-    // Second finger, held, fires. Moving it must not steer.
+    // Second finger on the fire button, held, fires. Sliding it inside the button must not steer.
+    const fireButton = page.getByLabel('Fire button', { exact: true });
+    await fireButton.waitFor({ state: 'visible' });
+    const fireBox = await fireButton.boundingBox();
+    assert(fireBox, 'Fire button has no on-screen box');
+    const fireX = fireBox.x + fireBox.width / 2;
+    const fireY = fireBox.y + fireBox.height / 2;
+    const fireNudge = {
+      x: Math.min(fireBox.x + fireBox.width - 4, fireX + 10),
+      y: Math.min(fireBox.y + fireBox.height - 4, fireY + 8),
+    };
+    pointInView(fireX, fireY, 'fire center');
+    pointInView(fireNudge.x, fireNudge.y, 'fire nudge');
     const parked = await snap();
-    await touch(client, 'touchStart', [{ id: 2, x: 70, y: 700 }]);
+    const locked = await viewportLock(page);
+    await touch(client, 'touchStart', [{ id: 2, x: fireX, y: fireY }]);
     await touch(client, 'touchMove', [
-      { id: 1, x: 180, y: 520 },
-      { id: 2, x: 140, y: 640 },
+      { id: 1, ...moveTo },
+      { id: 2, ...fireNudge },
     ]);
     await page.waitForTimeout(420);
     const firing = await snap();
-    assert(firing.moveId === 1 && firing.fireId === 2, `roles were move=${firing.moveId} fire=${firing.fireId}`);
-    assert(firing.firing === true, 'second finger should fire');
     assert(firing.shotsFired >= 2, `expected a steady stream, got ${firing.shotsFired} shots`);
+    assert(firing.ammo < parked.ammo, `ammo did not drop (${parked.ammo} -> ${firing.ammo})`);
     assert(Math.abs(firing.shipX - parked.shipX) < 8, 'dragging the fire finger moved the ship');
     assert(Math.abs(firing.shipY - parked.shipY) < 8, 'dragging the fire finger moved the ship vertically');
-    assert(await page.evaluate(() => window.scrollY === 0), 'the page scrolled during a two-finger drag');
-
-    const preventedFlag = await page.evaluate(() => window.__lastDefaultPrevented === true);
-    assert(preventedFlag, 'touchmove was not preventDefaulted, so the browser can still scroll or zoom');
+    const afterDrag = await viewportLock(page);
+    assert(
+      JSON.stringify(afterDrag) === JSON.stringify(locked),
+      `the page scrolled or zoomed while dragging and firing (${JSON.stringify(locked)} -> ${JSON.stringify(afterDrag)})`,
+    );
 
     // Lift the move finger. The remaining finger keeps firing and does not start steering.
-    await touch(client, 'touchEnd', [{ id: 1, x: 180, y: 520 }]);
-    const shotsAtLift = (await snap()).shotsFired;
-    await touch(client, 'touchMove', [{ id: 2, x: 40, y: 500 }]);
+    await touch(client, 'touchEnd', [{ id: 1, ...moveTo }]);
+    const atLift = await snap();
+    const fireAway = { x: 40, y: 500 };
+    pointInView(fireAway.x, fireAway.y, 'fire drag');
+    await touch(client, 'touchMove', [{ id: 2, ...fireAway }]);
     await page.waitForTimeout(300);
     const stillFiring = await snap();
-    assert(stillFiring.moveId == null, 'lifting the move finger reassigned the fire finger');
-    assert(stillFiring.fireId === 2, 'fire finger was lost');
-    assert(stillFiring.shotsFired > shotsAtLift, 'firing stopped while the second finger was still down');
+    assert(stillFiring.shotsFired > atLift.shotsFired, 'firing stopped while the second finger was still down');
+    assert(stillFiring.ammo < atLift.ammo, 'ammo stopped dropping while the fire finger was down');
     assert(Math.abs(stillFiring.shipX - firing.shipX) < 8, 'the fire finger started steering after the other finger lifted');
 
     // A new finger takes over steering while the original fire finger stays put.
-    await touch(client, 'touchStart', [{ id: 3, x: 200, y: 600 }]);
+    const nextFrom = { x: 200, y: 500 };
+    const nextTo = { x: 250, y: 460 };
+    pointInView(nextFrom.x, nextFrom.y, 'next move start');
+    pointInView(nextTo.x, nextTo.y, 'next move end');
+    await touch(client, 'touchStart', [{ id: 3, ...nextFrom }]);
     await touch(client, 'touchMove', [
-      { id: 2, x: 40, y: 500 },
-      { id: 3, x: 250, y: 560 },
+      { id: 2, ...fireAway },
+      { id: 3, ...nextTo },
     ]);
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(250);
     const swapped = await snap();
-    assert(swapped.moveId === 3, `new finger did not steer (move=${swapped.moveId})`);
-    assert(swapped.fireId === 2, `original fire finger changed to ${swapped.fireId}`);
     assert(swapped.shipX > stillFiring.shipX + 20, 'the new move finger did not drag the ship');
+    assert(swapped.shotsFired > stillFiring.shotsFired, 'firing stopped when a new finger started steering');
+    assert(swapped.ammo < stillFiring.ammo, 'ammo stopped dropping when a new finger started steering');
 
     await touch(client, 'touchEnd', [
-      { id: 2, x: 40, y: 500 },
-      { id: 3, x: 250, y: 560 },
+      { id: 2, ...fireAway },
+      { id: 3, ...nextTo },
     ]);
     await page.waitForTimeout(200);
     const released = await snap();
@@ -197,7 +283,9 @@ async function main() {
     assert(quiet.shotsFired === shotsWhenQuiet, 'shots kept coming after release');
 
     await page.screenshot({ path: '/tmp/alien-playing.png' });
-    console.log(JSON.stringify({ ok: true, gesture, quiet }, null, 2));
+    console.log(JSON.stringify({ chromium: { ok: true, gesture, quiet } }, null, 2));
+    const webkitTap = await webkitFireTap();
+    console.log(JSON.stringify({ webkitTap }, null, 2));
   } finally {
     if (errors.length) console.error('PAGE ERRORS\n' + errors.join('\n'));
     await browser.close();
