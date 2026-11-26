@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pewAllowed } from './shipThemes';
+import { FIRE_INTERVAL } from '../game/constants';
+import { PEW_GAP, pewAllowed } from './shipThemes';
 import {
   DEEP_THUMP,
-  RETRO_ZAP,
+  SHORT_CHIRP,
   SLEIGH_BELLS,
   WOBBLE_RAY,
   bellPartialLevel,
+  chirpHz,
+  chirpLevel,
   shimmerLevel,
   sampleCurvedShot,
   sampleThump,
@@ -21,27 +24,37 @@ import {
 } from './shots';
 
 describe('shot sounds', () => {
-  it('gives every regular ship the retro zap', () => {
+  it('gives every regular ship the short square chirp', () => {
     for (const id of ['classic', 'ember', 'violet', 'gold', 'nope']) {
       const shot = shotFor(id);
-      assert.equal(shot, RETRO_ZAP);
-      assert.equal(shot.kind, 'curve');
-      assert.equal(shot.type, 'sawtooth');
-      assert.equal(shot.from, 1800);
-      assert.equal(shot.to, 120);
-      assert.equal(shot.dur, 0.18);
-      assert.equal(shot.curve, 2);
-      assert.equal(shot.decay, 14);
+      assert.equal(shot, SHORT_CHIRP);
+      assert.equal(shot.kind, 'chirp');
+      assert.equal(shot.type, 'square');
+      assert.equal(shot.from, 2400);
+      assert.equal(shot.to, 500);
+      assert.equal(shot.dur, 0.07);
+      assert.equal(shot.gain, 0.22);
+      assert.equal(shot.floor, 0.0001);
     }
   });
 
-  it('follows the retro zap sweep and exponential envelope', () => {
-    const t = 0.06;
-    const expectedHz = 120 + (1800 - 120) * (1 - t / 0.18) ** 2;
-    assert.ok(Math.abs(sweepHz(RETRO_ZAP.from, RETRO_ZAP.to, RETRO_ZAP.dur, RETRO_ZAP.curve, t) - expectedHz) < 1e-9);
-    assert.equal(sweepHz(RETRO_ZAP.from, RETRO_ZAP.to, RETRO_ZAP.dur, RETRO_ZAP.curve, 0), 1800);
-    assert.equal(sweepHz(RETRO_ZAP.from, RETRO_ZAP.to, RETRO_ZAP.dur, RETRO_ZAP.curve, 0.18), 120);
-    assert.ok(Math.abs(shotLevel(RETRO_ZAP, t) - RETRO_ZAP.gain * Math.exp(-14 * t)) < 1e-9);
+  it('drops the chirp exponentially and is quiet before the next shot', () => {
+    assert.equal(chirpHz(SHORT_CHIRP, 0), 2400);
+    assert.ok(Math.abs(chirpHz(SHORT_CHIRP, 0.07) - 500) < 1e-9);
+    const mid = chirpHz(SHORT_CHIRP, 0.035);
+    assert.ok(Math.abs(mid - Math.sqrt(2400 * 500)) < 1e-6);
+    assert.equal(chirpLevel(SHORT_CHIRP, 0), 0.22);
+    assert.ok(Math.abs(chirpLevel(SHORT_CHIRP, 0.07) - 0.0001) < 1e-12);
+    const t = 0.03;
+    const expected = 0.22 * (0.0001 / 0.22) ** (t / 0.07);
+    assert.ok(Math.abs(chirpLevel(SHORT_CHIRP, t) - expected) < 1e-12);
+    assert.ok(SHORT_CHIRP.dur < FIRE_INTERVAL);
+    assert.ok(chirpLevel(SHORT_CHIRP, PEW_GAP) < 0.002);
+    assert.equal(shotGap(SHORT_CHIRP), PEW_GAP);
+    assert.equal(pewAllowed(0, 0.02), false);
+    assert.equal(pewAllowed(0, 0.01), false);
+    assert.equal(pewAllowed(0, 0.04), false);
+    assert.equal(pewAllowed(0, FIRE_INTERVAL), true);
   });
 
   it('gives SuperPink the wobble ray', () => {
@@ -63,14 +76,15 @@ describe('shot sounds', () => {
     assert.ok(Math.abs(shotLevel(shot, 0) - shot.gain) < 1e-9);
   });
 
-  it('samples the curve the synthesizer schedules', () => {
-    const { freq, amp } = sampleCurvedShot(RETRO_ZAP, 49);
-    assert.equal(freq[0], 1800);
-    assert.equal(freq[freq.length - 1], 120);
+  it('samples the wobble ray the synthesizer schedules', () => {
+    const { freq, amp } = sampleCurvedShot(WOBBLE_RAY, 49);
+    assert.equal(freq[0], 1500);
+    assert.ok(Math.abs(freq[freq.length - 1] - 400) < 1e-3);
     const mid = 24;
-    const t = (mid / 48) * RETRO_ZAP.dur;
-    assert.ok(Math.abs(freq[mid] - sweepHz(1800, 120, 0.18, 2, t)) < 1e-4);
-    assert.ok(Math.abs(amp[mid] - RETRO_ZAP.gain * Math.exp(-14 * t)) < 1e-5);
+    const t = (mid / 48) * WOBBLE_RAY.dur;
+    assert.ok(Math.abs(freq[mid] - sweepHz(1500, 400, 0.15, 1.5, t)) < 1e-3);
+    const wobble = 1 + 0.5 * Math.sin(2 * Math.PI * 60 * t);
+    assert.ok(Math.abs(amp[mid] - WOBBLE_RAY.gain * Math.exp(-15 * t) * wobble) < 1e-4);
   });
 
   it('gives Festive sleigh bells and keeps the shared repeat gap', () => {

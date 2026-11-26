@@ -1,13 +1,27 @@
 /**
  * Shot voices, synthesized in Web Audio from these curves. No samples.
- * Regular ships share the retro zap. SuperPink uses the wobble ray.
+ * Regular ships share a short square chirp. SuperPink uses the wobble ray.
  * Festive rings sleigh bells. MegaDark uses a deep thump.
  */
 import { PEW_GAP } from './shipThemes';
 
+export interface ChirpShot {
+  kind: 'chirp';
+  name: 'short-chirp';
+  /** Web Audio square is a 50% duty pulse. */
+  type: 'square';
+  from: number;
+  to: number;
+  dur: number;
+  /** Peak at t = 0. Same level the previous regular shot used. */
+  gain: number;
+  /** Exponential ramp lands here at `dur`. */
+  floor: number;
+}
+
 export interface CurvedShot {
   kind: 'curve';
-  name: 'retro-zap' | 'wobble-ray';
+  name: 'wobble-ray';
   type: 'sawtooth' | 'triangle';
   from: number;
   to: number;
@@ -68,18 +82,18 @@ export interface ThumpShot {
   gap: number;
 }
 
-export type ShotSpec = CurvedShot | BellsShot | ThumpShot;
+export type ShotSpec = ChirpShot | CurvedShot | BellsShot | ThumpShot;
 
-export const RETRO_ZAP: CurvedShot = {
-  kind: 'curve',
-  name: 'retro-zap',
-  type: 'sawtooth',
-  from: 1800,
-  to: 120,
-  dur: 0.18,
-  curve: 2,
-  decay: 14,
+/** Shared by Classic, Ember, Violet, and Gold. */
+export const SHORT_CHIRP: ChirpShot = {
+  kind: 'chirp',
+  name: 'short-chirp',
+  type: 'square',
+  from: 2400,
+  to: 500,
+  dur: 0.07,
   gain: 0.22,
+  floor: 0.0001,
 };
 
 export const WOBBLE_RAY: CurvedShot = {
@@ -133,7 +147,19 @@ export function shotFor(shipId: string): ShotSpec {
   if (shipId === 'superpink') return WOBBLE_RAY;
   if (shipId === 'megadark') return DEEP_THUMP;
   if (shipId === 'festive') return SLEIGH_BELLS;
-  return RETRO_ZAP;
+  return SHORT_CHIRP;
+}
+
+/** f(t) = from * (to / from) ^ (t / dur). True exponential, not a power bend. */
+export function chirpHz(shot: ChirpShot, t: number): number {
+  const u = shot.dur <= 0 ? 1 : Math.min(1, Math.max(0, t / shot.dur));
+  return shot.from * (shot.to / shot.from) ** u;
+}
+
+/** g(t) = gain * (floor / gain) ^ (t / dur). About e^(-110 t), so the tail is ~0.0001 at 0.07 s. */
+export function chirpLevel(shot: ChirpShot, t: number): number {
+  const u = shot.dur <= 0 ? 1 : Math.min(1, Math.max(0, t / shot.dur));
+  return shot.gain * (shot.floor / shot.gain) ** u;
 }
 
 /** MegaDark waits longer so the thump does not mush. Every other shot keeps the shared gap. */
