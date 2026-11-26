@@ -1,7 +1,7 @@
 /**
  * Real WebKit touch check for the iPhone fire button.
  * Serves dist/ at /alien-shooter/ and taps the button's on-screen coordinates
- * with Playwright's WebKit touchscreen (iPhone 13, hasTouch, isMobile).
+ * with Playwright's WebKit touchscreen (iPhone 14, hasTouch, isMobile).
  *
  *   npm run export:web && node scripts/preview-web.js
  *   npm run test:webkit
@@ -18,7 +18,7 @@ function assert(condition, message) {
 async function main() {
   const browser = await webkit.launch({ headless: true });
   const context = await browser.newContext({
-    ...devices['iPhone 13'],
+    ...devices['iPhone 14'],
     hasTouch: true,
     isMobile: true,
   });
@@ -60,13 +60,30 @@ async function main() {
     });
 
   try {
-    await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1`, { waitUntil: 'networkidle' });
+    await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1&debugTouch=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__ALIEN__ && window.__ALIEN__.snapshot().width > 0);
     await page.getByRole('button', { name: 'Play' }).tap();
     await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing');
 
     // First frame of play, tutorial still up. A real WebKit tap at the button.
     const button = await firePoint();
+    const hit = await page.evaluate(() => {
+      const node = document.querySelector('[data-alien-fire]');
+      const rect = node.getBoundingClientRect();
+      const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const style = getComputedStyle(node);
+      const alpha = Number(style.backgroundColor.match(/[\d.]+(?=\))/)?.[0] ?? 1);
+      return {
+        label: target && target.getAttribute('aria-label'),
+        fire: !!(target && target.closest('[data-alien-fire]')),
+        alpha,
+        width: rect.width,
+      };
+    });
+    assert(hit.fire, `elementFromPoint hit ${hit.label}`);
+    assert(hit.label === 'Fire button', `elementFromPoint label ${hit.label}`);
+    assert(hit.alpha > 0, 'fire button is fully transparent, so iOS can skip it');
+    assert(hit.width >= 80 + 32, `hit target is only ${hit.width}px wide`);
     assert(button.bottom >= 47, `clearance ${button.bottom}`);
     assert(button.pointerEvents === 'auto', `pointer-events ${button.pointerEvents}`);
     assert(button.touchAction === 'none', `touch-action ${button.touchAction}`);
@@ -81,7 +98,33 @@ async function main() {
     assert(afterTap.shotsFired > beforeTap.shotsFired, `webkit tap shots ${beforeTap.shotsFired} -> ${afterTap.shotsFired}`);
     assert(afterTap.ammo < beforeTap.ammo, `webkit tap ammo ${beforeTap.ammo} -> ${afterTap.ammo}`);
     assert(tapLog.some((entry) => entry.fire && (entry.type === 'touchstart' || entry.type === 'pointerdown')), 'tap missed the fire button');
+    const debugText = await page.locator('#alien-touch-debug').innerText();
+    assert(debugText.includes('touch-hit-1'), `debug readout missing build: ${debugText}`);
+    assert(/touchstart|pointerdown/.test(debugText), `debug readout had no touch: ${debugText}`);
     await page.screenshot({ path: '/opt/cursor/artifacts/webkit-tap-fires.png' });
+    const missedPointer = await page.evaluate(async () => {
+      const fire = document.querySelector('[data-alien-fire]');
+      const rect = fire.getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      const root = document.getElementById('alien-shooter-root');
+      const before = window.__ALIEN__.snapshot().shotsFired;
+      root.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: 2, pointerType: 'touch',
+        clientX: 4, clientY: 4, button: 0, buttons: 1, isPrimary: true,
+      }));
+      const event = new Event('touchstart', { bubbles: true, cancelable: true });
+      const touch = { identifier: 0, clientX: x, clientY: y, target: fire };
+      Object.defineProperty(event, 'changedTouches', { value: [touch] });
+      Object.defineProperty(event, 'touches', { value: [touch] });
+      root.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 280));
+      const snap = window.__ALIEN__.snapshot();
+      return { before, shots: snap.shotsFired, firing: snap.firing, pressed: fire.getAttribute('data-pressed') };
+    });
+    assert(missedPointer.shots > missedPointer.before, `touch inside the button was ignored (${missedPointer.before} -> ${missedPointer.shots})`);
+    assert(missedPointer.pressed === '1', `button did not show a press (${missedPointer.pressed})`);
+    await page.screenshot({ path: '/opt/cursor/artifacts/webkit-fire-pressed.png' });
 
     // Sustained touch at the same coordinates. Bullets should keep coming about every 0.08s.
     const heldFrom = (await snap()).shotsFired;

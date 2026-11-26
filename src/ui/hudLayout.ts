@@ -50,6 +50,8 @@ const EDGE = 6;
  * inside that strip.
  */
 export const FIRE_BOTTOM_CLEARANCE = 48;
+/** Extra pixels around the fire graphic. The hit target is larger than the drawn pad. */
+export const FIRE_HIT_SLOP = 20;
 export const LASER_STICK_SIZE = 92;
 
 export function elementLabel(id: HudElementId): string {

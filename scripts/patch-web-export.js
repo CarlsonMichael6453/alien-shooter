@@ -36,7 +36,31 @@ const style = `<style>
 </style>`;
 html = html.replace('</head>', `${style}</head>`);
 html = html.replace(/<title>[^<]*<\/title>/i, '<title>Alien Shooter</title>');
+const headTags = [
+  '<meta name="mobile-web-app-capable" content="yes" />',
+  '<meta name="apple-mobile-web-app-capable" content="yes" />',
+  '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />',
+  '<link rel="manifest" href="/alien-shooter/manifest.webmanifest" />',
+].join('');
+if (!html.includes('apple-mobile-web-app-capable')) {
+  html = html.replace('</head>', `${headTags}</head>`);
+}
 fs.writeFileSync(htmlPath, html);
+fs.writeFileSync(
+  path.join(dist, 'manifest.webmanifest'),
+  JSON.stringify(
+    {
+      name: 'Alien Shooter',
+      short_name: 'Alien Shooter',
+      start_url: '/alien-shooter/',
+      display: 'standalone',
+      background_color: '#070B14',
+      theme_color: '#070B14',
+    },
+    null,
+    2,
+  ),
+);
 fs.writeFileSync(path.join(dist, '.nojekyll'), '');
 
 if (!html.includes('/alien-shooter/')) {
