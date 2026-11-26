@@ -1,4 +1,5 @@
 import { hexPoints } from './abilityArt';
+import { LASER_PINCH, candyGlowQuad, candyQuads, laserLength } from './candyCane';
 import { shipStyle } from './ships';
 import { shipTheme, type ShipTheme } from './shipTheme';
 import { beamNose } from './logic';
@@ -557,7 +558,7 @@ function drawLaser(painter: Painter, state: GameState): void {
   }
   const nose = beamNose(state);
   const angle = state.laserAngle;
-  const length = Math.max(state.width, state.height) * 1.4;
+  const length = laserLength(state.width, state.height);
   const flicker = 0.78 + Math.sin(state.time * 54) * 0.14 + Math.sin(state.time * 97) * 0.08;
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
@@ -565,7 +566,7 @@ function drawLaser(painter: Painter, state: GameState): void {
   const py = dx;
   const tipX = nose.x + dx * length;
   const tipY = nose.y + dy * length;
-  const band = (half: number, color: string, pinch = 0.65) => {
+  const band = (half: number, color: string, pinch = LASER_PINCH) => {
     painter.fillPolygon(
       [
         [nose.x + px * half, nose.y + py * half],
@@ -705,33 +706,35 @@ function drawBoss(painter: Painter, boss: Boss, tint: string, time: number): voi
 function drawCandyCane(painter: Painter, state: GameState, pack: ShipTheme): void {
   const nose = beamNose(state);
   const angle = state.laserAngle;
-  const length = Math.max(state.width, state.height) * 1.2;
+  const length = laserLength(state.width, state.height);
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
   const px = -dy;
   const py = dx;
-  const steps = 26;
-  for (let i = 0; i < steps; i += 1) {
-    const t0 = i / steps;
-    const t1 = (i + 1) / steps;
-    const side0 = Math.sin(t0 * 16 + state.time * 6) * 8;
-    const side1 = Math.sin(t1 * 16 + state.time * 6) * 8;
-    const x0 = nose.x + dx * t0 * length + px * side0;
-    const y0 = nose.y + dy * t0 * length + py * side0;
-    const x1 = nose.x + dx * t1 * length + px * side1;
-    const y1 = nose.y + dy * t1 * length + py * side1;
-    const color = i % 2 === 0 ? pack.laser.body : pack.laser.core;
+  const tipX = nose.x + dx * length;
+  const tipY = nose.y + dy * length;
+  const place = (along: number, side: number): [number, number] => [nose.x + dx * along + px * side, nose.y + dy * along + py * side];
+  painter.fillPolygon(
+    candyGlowQuad(length).map(([along, side]) => place(along, side)),
+    pack.laser.glow,
+  );
+  for (const stripe of candyQuads(length, state.time, pack.laser.body, pack.laser.core)) {
     painter.fillPolygon(
-      [
-        [x0 + px * 3.2, y0 + py * 3.2],
-        [x0 - px * 3.2, y0 - py * 3.2],
-        [x1 - px * 3.2, y1 - py * 3.2],
-        [x1 + px * 3.2, y1 + py * 3.2],
-      ],
-      color,
+      stripe.corners.map(([along, side]) => place(along, side)),
+      stripe.color,
     );
   }
-  painter.fillCircle(nose.x, nose.y, 7, pack.laser.hot);
+  painter.fillCircle(nose.x, nose.y, 14, pack.laser.glow);
+  painter.fillCircle(nose.x, nose.y, 6, pack.laser.hot);
+
+  for (const enemy of state.enemies) {
+    const distance = pointLineDistance(enemy.x, enemy.y, nose.x, nose.y, tipX, tipY);
+    if (distance > enemy.r + 10) continue;
+    const glow = 0.65 + Math.sin(state.time * 40 + enemy.id) * 0.35;
+    painter.fillCircle(enemy.x, enemy.y, enemy.r * 0.55, rgba('#2A120C', 0.45));
+    painter.fillCircle(enemy.x, enemy.y, 7 * glow, 'rgba(255,220,150,0.85)');
+    painter.fillCircle(enemy.x + px * 6, enemy.y + py * 6, 2.2, '#FFF8E8');
+  }
 }
 
 function drawShield(painter: Painter, state: GameState, pack: ShipTheme): void {

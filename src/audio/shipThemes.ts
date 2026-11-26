@@ -43,13 +43,7 @@ export function musicChangesWithShip(previous: string, next: string): boolean {
   return shipMusic(previous).id !== shipMusic(next).id;
 }
 
-/** Default pew: a fast drop from about 1200 Hz to about 200 Hz. Paid themes scale both ends. */
-export function pewSweep(shipId: string): { from: number; to: number; dur: number } {
-  const tint = shipMusic(shipId).shoot / 640;
-  return { from: 1200 * tint, to: 200 * tint, dur: 0.1 };
-}
-
-/** Rapid fire is every 0.02s. A new pew closer than this stacks into a harsh buzz. */
+/** Rapid fire is every 0.02s. A new shot closer than this stacks into a harsh buzz. */
 export const PEW_GAP = 0.05;
 
 export function pewAllowed(lastAt: number, now: number, gap = PEW_GAP): boolean {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { musicChangesWithShip, musicNotesDue, pewAllowed, pewSweep, shipMusic } from './shipThemes';
+import { musicChangesWithShip, musicNotesDue, pewAllowed, shipMusic } from './shipThemes';
 
 describe('ship music', () => {
   it('gives every regular ship the same default theme and sound set', () => {
@@ -30,22 +30,6 @@ describe('ship music', () => {
       assert.notEqual(shipMusic(id).shoot, shipMusic('classic').shoot);
       assert.notEqual(shipMusic(id).laser, shipMusic('classic').laser);
     }
-  });
-
-  it('shapes a pew as a short downward sweep, tinted only for paid ships', () => {
-    const classic = pewSweep('classic');
-    const dark = pewSweep('megadark');
-    const pink = pewSweep('superpink');
-    assert.ok(Math.abs(classic.from - 1200) < 1);
-    assert.ok(Math.abs(classic.to - 200) < 1);
-    assert.equal(classic.dur, 0.1);
-    assert.ok(classic.from / classic.to > 5);
-    assert.deepEqual(pewSweep('ember'), classic);
-    assert.deepEqual(pewSweep('violet'), classic);
-    assert.deepEqual(pewSweep('gold'), classic);
-    assert.ok(dark.from < classic.from);
-    assert.ok(pink.from > classic.from);
-    assert.notDeepEqual(pewSweep('festive'), classic);
   });
 
   it('drops extra pews during rapid fire so they do not stack every 0.02s', () => {

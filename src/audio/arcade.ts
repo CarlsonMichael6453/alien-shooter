@@ -2,7 +2,8 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
-import { musicNotesDue, pewAllowed, pewSweep, shipMusic, type MusicVoice } from './shipThemes';
+import { sampleCurvedShot, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type CurvedShot, type ThumpShot } from './shots';
+import { musicNotesDue, pewAllowed, shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
   music: number;
@@ -148,10 +149,121 @@ class ArcadeAudio {
     const ctx = this.ensure();
     if (!ctx || !this.unlocked) return;
     const now = ctx.currentTime;
-    if (!pewAllowed(this.lastPew, now)) return;
+    const shot = shotFor(shipId);
+    if (!pewAllowed(this.lastPew, now, shotGap(shot))) return;
     this.lastPew = now;
-    const sweep = pewSweep(shipId);
-    this.tone(sweep.from, sweep.dur, 'square', 0.22, sweep.to / sweep.from);
+    if (shot.kind === 'thump') {
+      this.playThump(shot, now);
+      return;
+    }
+    if (shot.kind === 'bells') {
+      this.playBells(shot, now);
+      return;
+    }
+    this.playCurve(shot, now);
+  }
+
+  /** Three stacked sine partials per strike, plus a short noise shimmer. */
+  private playBells(shot: BellsShot, now: number): void {
+    const ctx = this.ctx;
+    const dest = this.sfxGain;
+    if (!ctx || !dest) return;
+    for (const hit of shot.hits) {
+      const start = now + hit.at;
+      for (let i = 0; i < shot.ratios.length; i += 1) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(hit.freq * shot.ratios[i], start);
+        const peak = Math.max(0.0001, shot.gain * shot.partials[i]);
+        const end = Math.max(0.0001, peak * Math.exp(-hit.decay * hit.dur));
+        gain.gain.setValueAtTime(peak, start);
+        gain.gain.exponentialRampToValueAtTime(end, start + hit.dur);
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start(start);
+        osc.stop(start + hit.dur + 0.02);
+      }
+    }
+    const frames = Math.max(1, Math.floor(ctx.sampleRate * shot.shimmerDur));
+    const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < frames; i += 1) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    noise.buffer = buffer;
+    const peak = Math.max(0.0001, shot.gain * shot.shimmer);
+    const end = Math.max(0.0001, peak * Math.exp(-shot.shimmerDecay * shot.shimmerDur));
+    gain.gain.setValueAtTime(peak, now);
+    gain.gain.exponentialRampToValueAtTime(end, now + shot.shimmerDur);
+    noise.connect(gain);
+    gain.connect(dest);
+    noise.start(now);
+    noise.stop(now + shot.shimmerDur + 0.02);
+  }
+
+  /** Piecewise-linear schedule of the exact sweep and envelope. */
+  private playCurve(shot: CurvedShot, now: number): void {
+    const ctx = this.ctx;
+    const dest = this.sfxGain;
+    if (!ctx || !dest) return;
+    const frames = shot.wobbleHz ? 216 : 48;
+    const { freq, amp } = sampleCurvedShot(shot, frames);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = shot.type;
+    const last = frames - 1;
+    osc.frequency.setValueAtTime(freq[0], now);
+    gain.gain.setValueAtTime(amp[0], now);
+    for (let i = 1; i < frames; i += 1) {
+      const at = now + (i / last) * shot.dur;
+      osc.frequency.linearRampToValueAtTime(freq[i], at);
+      gain.gain.linearRampToValueAtTime(amp[i], at);
+    }
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + shot.dur + 0.02);
+  }
+
+  /** Sine body, a quieter second harmonic, then a light tanh clip. */
+  private playThump(shot: ThumpShot, now: number): void {
+    const ctx = this.ctx;
+    const dest = this.sfxGain;
+    if (!ctx || !dest) return;
+    const frames = 128;
+    const { freq, fund, harm } = sampleThump(shot, frames);
+    const fundamental = ctx.createOscillator();
+    const overtone = ctx.createOscillator();
+    const fundGain = ctx.createGain();
+    const harmGain = ctx.createGain();
+    const shaper = ctx.createWaveShaper();
+    fundamental.type = 'sine';
+    overtone.type = 'sine';
+    shaper.curve = softClipCurve(shot.drive);
+    shaper.oversample = '2x';
+    const last = frames - 1;
+    fundamental.frequency.setValueAtTime(freq[0], now);
+    overtone.frequency.setValueAtTime(freq[0] * 2, now);
+    fundGain.gain.setValueAtTime(fund[0], now);
+    harmGain.gain.setValueAtTime(harm[0], now);
+    for (let i = 1; i < frames; i += 1) {
+      const at = now + (i / last) * shot.dur;
+      fundamental.frequency.linearRampToValueAtTime(freq[i], at);
+      overtone.frequency.linearRampToValueAtTime(freq[i] * 2, at);
+      fundGain.gain.linearRampToValueAtTime(fund[i], at);
+      harmGain.gain.linearRampToValueAtTime(harm[i], at);
+    }
+    fundamental.connect(fundGain);
+    overtone.connect(harmGain);
+    fundGain.connect(shaper);
+    harmGain.connect(shaper);
+    shaper.connect(dest);
+    fundamental.start(now);
+    overtone.start(now);
+    const stop = now + shot.dur + 0.02;
+    fundamental.stop(stop);
+    overtone.stop(stop);
   }
 
   hit(): void {
