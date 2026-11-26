@@ -38,3 +38,24 @@ export function purchaseProduct(productId: string): { ok: false; productId: stri
 export function devUnlockAllFromLocation(search: string): boolean {
   return new URLSearchParams(search).get('unlockAll') === '1';
 }
+
+const TEST_MODE_KEY = 'alien-shooter:test-mode';
+
+/** Remember unlockAll for this browser tab so menus and restarts keep it. A new tab does not. */
+export function rememberTestMode(active: boolean): void {
+  if (!active || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(TEST_MODE_KEY, '1');
+  } catch {
+    // Private mode can refuse storage. The query string still applies.
+  }
+}
+
+export function testModeActive(search: string): boolean {
+  if (devUnlockAllFromLocation(search)) return true;
+  try {
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(TEST_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}

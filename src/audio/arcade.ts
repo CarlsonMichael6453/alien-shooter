@@ -2,7 +2,7 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
-import { shipMusic, type MusicVoice } from './shipThemes';
+import { musicNotesDue, pewAllowed, pewSweep, shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
   music: number;
@@ -61,6 +61,7 @@ class ArcadeAudio {
   private step = 0;
   private ship = '';
   private boss = false;
+  private lastPew = -1;
   private unlocked = false;
   private laser: LaserBed | null = null;
 
@@ -144,8 +145,13 @@ class ArcadeAudio {
   }
 
   shoot(shipId = 'classic'): void {
-    const theme = shipMusic(shipId);
-    this.tone(theme.shoot, 0.06, theme.voice === 'sine' ? 'square' : theme.voice, 0.35, 0.45);
+    const ctx = this.ensure();
+    if (!ctx || !this.unlocked) return;
+    const now = ctx.currentTime;
+    if (!pewAllowed(this.lastPew, now)) return;
+    this.lastPew = now;
+    const sweep = pewSweep(shipId);
+    this.tone(sweep.from, sweep.dur, 'square', 0.22, sweep.to / sweep.from);
   }
 
   hit(): void {
@@ -221,6 +227,7 @@ class ArcadeAudio {
   private tickMusicUnsafe(shipId: string, boss: boolean): void {
     const ctx = this.ctx;
     if (!ctx || !this.unlocked || !this.settings.musicOn) return;
+    if (ctx.state === 'suspended') void ctx.resume();
     const theme = shipMusic(shipId);
     if (theme.id !== this.ship || boss !== this.boss) {
       this.ship = theme.id;
@@ -231,12 +238,13 @@ class ArcadeAudio {
     const root = theme.root * (boss ? 0.5 : 1);
     const scale = boss ? [0, 3, 5, 6, 7, 10] : theme.scale;
     const interval = boss ? Math.max(0.14, theme.interval * 0.7) : theme.interval;
-    while (this.nextBeat < ctx.currentTime + 0.35) {
+    const due = musicNotesDue(this.nextBeat, ctx.currentTime, interval);
+    this.nextBeat = due.next;
+    for (let i = 0; i < due.count; i += 1) {
       const degree = scale[this.step % scale.length];
       const freq = root * 2 ** (degree / 12) * (this.step % 8 === 0 ? 0.5 : 1);
       this.tone(freq, boss ? 0.12 : 0.16, boss ? 'sawtooth' : theme.voice, this.step % 4 === 0 ? 0.7 : 0.4, 1, 'music');
       if (this.step % 2 === 0) this.tone(boss ? theme.root * 0.4 : theme.root * 0.35, 0.05, 'square', 0.25, 0.5, 'music');
-      this.nextBeat += interval;
       this.step += 1;
     }
   }

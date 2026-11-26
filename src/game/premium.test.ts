@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { SHIPS, shipUnlocked } from './ships';
-import { BUNDLE_PRICE_LABEL, EMPTY_ENTITLEMENTS, PREMIUM_PRODUCTS, SHIP_PRICE_LABEL, devUnlockAllFromLocation, hasEntitlement, purchaseProduct } from './premium';
+import { BUNDLE_PRICE_LABEL, EMPTY_ENTITLEMENTS, PREMIUM_PRODUCTS, SHIP_PRICE_LABEL, devUnlockAllFromLocation, hasEntitlement, purchaseProduct, testModeActive } from './premium';
 
 describe('premium ships', () => {
   it('keeps score ships free and locks the three themes until an entitlement exists', () => {
@@ -9,7 +9,10 @@ describe('premium ships', () => {
     const pink = SHIPS.find((ship) => ship.id === 'superpink')!;
     assert.equal(gold.premium, false);
     assert.equal(shipUnlocked(gold, 15000, 1, EMPTY_ENTITLEMENTS), true);
+    assert.equal(shipUnlocked(gold, 0, 1, EMPTY_ENTITLEMENTS), false);
+    assert.equal(shipUnlocked(gold, 0, 1, { owned: [], unlockAll: true }), true);
     assert.equal(shipUnlocked(pink, 999999, 99, EMPTY_ENTITLEMENTS), false);
+    assert.equal(shipUnlocked(pink, 0, 1, { owned: [], unlockAll: true }), true);
     assert.equal(pink.productId, PREMIUM_PRODUCTS.superpink);
     assert.equal(pink.priceLabel, SHIP_PRICE_LABEL);
     assert.equal(hasEntitlement({ owned: [PREMIUM_PRODUCTS.superpink], unlockAll: false }, PREMIUM_PRODUCTS.superpink), true);
@@ -20,5 +23,7 @@ describe('premium ships', () => {
     assert.equal(BUNDLE_PRICE_LABEL, '$3.99');
     assert.equal(devUnlockAllFromLocation('?debug=1&unlockAll=1'), true);
     assert.equal(devUnlockAllFromLocation('?debug=1'), false);
+    assert.equal(testModeActive('?unlockAll=1'), true);
+    assert.equal(testModeActive(''), false);
   });
 });

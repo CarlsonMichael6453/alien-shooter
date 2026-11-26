@@ -38,6 +38,7 @@ export function shipUnlocked(
   bestWave: number,
   entitlements: { owned: readonly string[]; unlockAll: boolean } = { owned: [], unlockAll: false },
 ): boolean {
+  if (entitlements.unlockAll) return true;
   if (ship.premium) return ship.productId != null && hasEntitlement(entitlements, ship.productId);
   return bestScore >= ship.score || bestWave >= ship.wave;
 }
