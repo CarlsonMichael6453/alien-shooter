@@ -2,6 +2,7 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
+import { shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
   music: number;
@@ -36,7 +37,7 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-type Tone = 'square' | 'sawtooth' | 'triangle' | 'sine';
+type Tone = MusicVoice;
 
 /** Charge into the beam, then the looping body, then the fall-away. Seconds, not gameplay time. */
 export const LASER_CHARGE = 0.26;
@@ -58,7 +59,7 @@ class ArcadeAudio {
   private sfxGain: GainNode | null = null;
   private nextBeat = 0;
   private step = 0;
-  private sector = -1;
+  private ship = '';
   private boss = false;
   private unlocked = false;
   private laser: LaserBed | null = null;
@@ -142,8 +143,9 @@ class ArcadeAudio {
     osc.stop(ctx.currentTime + dur + 0.02);
   }
 
-  shoot(): void {
-    this.tone(640, 0.06, 'square', 0.35, 0.45);
+  shoot(shipId = 'classic'): void {
+    const theme = shipMusic(shipId);
+    this.tone(theme.shoot, 0.06, theme.voice === 'sine' ? 'square' : theme.voice, 0.35, 0.45);
   }
 
   hit(): void {
@@ -182,12 +184,15 @@ class ArcadeAudio {
     else this.laser.play();
   }
 
-  power(kind: string): void {
-    if (kind === 'shield') this.tone(480, 0.18, 'sine', 0.4, 1.6);
-    else if (kind === 'warp') this.tone(300, 0.3, 'sawtooth', 0.3, 0.5);
-    else if (kind === 'wingman') this.tone(660, 0.1, 'square', 0.3, 1.5);
-    else if (kind === 'missiles') this.tone(440, 0.16, 'sawtooth', 0.32, 1.7);
-    else this.tone(880, 0.1, 'square', 0.28, 1.2);
+  power(kind: string, shipId = 'classic'): void {
+    const theme = shipMusic(shipId);
+    if (kind === 'shield') this.tone(theme.shoot * 0.75, 0.18, 'sine', 0.4, 1.6);
+    else if (kind === 'warp') this.tone(theme.root * 1.4, 0.3, 'sawtooth', 0.3, 0.5);
+    else if (kind === 'wingman') this.tone(theme.rapid * 0.75, 0.1, 'square', 0.3, 1.5);
+    else if (kind === 'missiles') this.tone(theme.root * 2, 0.16, 'sawtooth', 0.32, 1.7);
+    else if (kind === 'rapid') this.tone(theme.rapid, 0.08, 'square', 0.32, 1.4);
+    else if (kind === 'laser') this.tone(theme.laser, 0.16, 'sawtooth', 0.28, 1.5);
+    else this.tone(theme.rapid, 0.1, 'square', 0.28, 1.2);
   }
 
   bossIntro(): void {
@@ -205,31 +210,32 @@ class ArcadeAudio {
     this.tone(659, 0.22, 'square', 0.45, 1);
   }
 
-  tickMusic(sector: number, boss: boolean): void {
+  tickMusic(shipId: string, boss: boolean): void {
     try {
-      this.tickMusicUnsafe(sector, boss);
+      this.tickMusicUnsafe(shipId, boss);
     } catch {
       // Music must not stop the game loop.
     }
   }
 
-  private tickMusicUnsafe(sector: number, boss: boolean): void {
+  private tickMusicUnsafe(shipId: string, boss: boolean): void {
     const ctx = this.ctx;
     if (!ctx || !this.unlocked || !this.settings.musicOn) return;
-    if (sector !== this.sector || boss !== this.boss) {
-      this.sector = sector;
+    const theme = shipMusic(shipId);
+    if (theme.id !== this.ship || boss !== this.boss) {
+      this.ship = theme.id;
       this.boss = boss;
       this.step = 0;
+      this.nextBeat = ctx.currentTime;
     }
-    const roots = [196, 220, 247, 174.6, 233.1];
-    const root = (boss ? 146.8 : roots[((sector % 5) + 5) % 5]) * (boss ? 1 : 1);
-    const scale = boss ? [0, 3, 5, 6, 7, 10] : [0, 2, 4, 7, 9];
-    const interval = boss ? 0.16 : 0.24;
+    const root = theme.root * (boss ? 0.5 : 1);
+    const scale = boss ? [0, 3, 5, 6, 7, 10] : theme.scale;
+    const interval = boss ? Math.max(0.14, theme.interval * 0.7) : theme.interval;
     while (this.nextBeat < ctx.currentTime + 0.35) {
       const degree = scale[this.step % scale.length];
       const freq = root * 2 ** (degree / 12) * (this.step % 8 === 0 ? 0.5 : 1);
-      this.tone(freq, boss ? 0.12 : 0.16, boss ? 'sawtooth' : 'triangle', this.step % 4 === 0 ? 0.7 : 0.4, 1, 'music');
-      if (this.step % 2 === 0) this.tone(boss ? 90 : 70, 0.05, 'square', 0.25, 0.5, 'music');
+      this.tone(freq, boss ? 0.12 : 0.16, boss ? 'sawtooth' : theme.voice, this.step % 4 === 0 ? 0.7 : 0.4, 1, 'music');
+      if (this.step % 2 === 0) this.tone(boss ? theme.root * 0.4 : theme.root * 0.35, 0.05, 'square', 0.25, 0.5, 'music');
       this.nextBeat += interval;
       this.step += 1;
     }
