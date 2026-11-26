@@ -91,6 +91,7 @@ const INITIAL_HUD: HudModel = {
   sectorName: 'Deep Space',
   story: '',
   sectorBanner: 0,
+  upgradeFlash: 0,
   bossHp: 0,
   bossMax: 0,
   shieldTimer: 0,

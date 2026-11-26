@@ -62,6 +62,7 @@ export function publishHud(
     prev.missileLeft === state.missileLeft &&
     prev.wave === state.wave &&
     Math.abs(prev.sectorBanner - state.sectorBanner) < 0.05 &&
+    Math.abs(prev.upgradeFlash - state.upgradeFlash) < 0.05 &&
     prev.sectorName === sectorName &&
     prev.story === story &&
     prev.bossHp === (state.boss?.hp ?? 0) &&
@@ -92,6 +93,7 @@ export function publishHud(
     sectorName,
     story,
     sectorBanner: state.sectorBanner,
+    upgradeFlash: state.upgradeFlash,
     bossHp: state.boss?.hp ?? 0,
     bossMax: state.boss?.maxHp ?? 0,
     shieldTimer: state.shieldTimer,

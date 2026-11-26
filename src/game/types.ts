@@ -149,6 +149,10 @@ export interface GameState {
   shake: number;
   muzzle: number;
   fireCooldown: number;
+  /** Endless only. Set the first time this run reaches 10,000 points. */
+  weaponsUpgrade: boolean;
+  /** Seconds left in the weapons-upgrade pause. */
+  upgradeFlash: number;
   spawnCooldown: number;
   shotsFired: number;
   /** Seconds spent on the game-over card. Restarts are ignored until this passes a short lock. */
