@@ -153,6 +153,8 @@ export function GameScreen() {
   const pausedRef = useRef(false);
   const startRef = useRef(false);
   const restartRef = useRef(false);
+  /** A tap can end before the next frame. Remember it so that frame still shoots once. */
+  const triggerPulseRef = useRef(false);
   const hudRef = useRef(INITIAL_HUD);
   const [hud, setHud] = useState<HudModel>(INITIAL_HUD);
   const storeRef = useRef(createAppStore());
@@ -200,6 +202,7 @@ export function GameScreen() {
     const mode = stateRef.current?.mode;
     if (mode === 'ready') startRef.current = true;
     else if (mode === 'over') restartRef.current = true;
+    if (controlsRef.current.frame().firing) triggerPulseRef.current = true;
     if (Platform.OS === 'web') activateKeepAwakeAsync().catch(() => {});
     if (Platform.OS === 'web') audio.unlock();
   };
@@ -368,12 +371,15 @@ export function GameScreen() {
         const modeBefore = state.mode;
         const frozen = pausedRef.current || uiRef.current !== 'none';
         const control = controlsRef.current.frame();
+        const triggerPulse = triggerPulseRef.current;
+        triggerPulseRef.current = false;
         if (!frozen) {
           const restarting = restartRef.current && state.mode === 'over';
           step(
             state,
             {
               ...control,
+              firing: control.firing || triggerPulse,
               moveActive: restarting ? false : control.moveActive,
               activateSlot: controlsRef.current.consumePower(),
               start: startRef.current,
@@ -553,8 +559,8 @@ export function GameScreen() {
       style={[styles.root, webTouch as object]}
       {...nativeTouchProps(controlsRef, stateRef, uiRef, () => onPressRef.current())}
     >
-      <View pointerEvents="box-none" style={{ width: playfield.width, height: playfield.height }}>
-        <View pointerEvents="none" style={styles.playfield}>
+      <View pointerEvents="box-none" style={[{ width: playfield.width, height: playfield.height }, webTouch as object]}>
+        <View pointerEvents="none" style={[styles.playfield, webTouch as object]}>
           <GameCanvas ref={canvasRef} width={playfield.width} height={playfield.height} />
           <ArenaPickups ref={pickupsRef} />
         </View>

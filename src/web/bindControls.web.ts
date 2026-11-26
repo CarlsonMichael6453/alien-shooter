@@ -69,7 +69,8 @@ export function markFireZone(node: unknown): void {
     };
   };
   const start = (event: TouchEvent) => {
-    event.preventDefault();
+    // preventDefault on touchstart makes iOS Safari cancel the gesture
+    // immediately, so a hold never lasts long enough to fire a bullet.
     const handler = fireTouchHandler;
     if (!handler) return;
     for (const touch of Array.from(event.changedTouches)) {
@@ -80,7 +81,8 @@ export function markFireZone(node: unknown): void {
   const end = (event: TouchEvent) => {
     const handler = fireReleaseHandler;
     if (!handler) return;
-    for (const touch of Array.from(event.changedTouches)) handler(touch.identifier);
+    const fromCancel = event.type === 'touchcancel';
+    for (const touch of Array.from(event.changedTouches)) handler(touch.identifier, fromCancel);
   };
   element.addEventListener('touchstart', start, { passive: false });
   element.addEventListener('touchend', end);
@@ -88,7 +90,7 @@ export function markFireZone(node: unknown): void {
 }
 
 let fireTouchHandler: ((id: number, x: number, y: number) => void) | null = null;
-let fireReleaseHandler: ((id: number) => void) | null = null;
+let fireReleaseHandler: ((id: number, fromCancel?: boolean) => void) | null = null;
 let laserTouchHandler: ((id: number, x: number, y: number) => boolean) | null = null;
 let laserReleaseHandler: ((id: number) => void) | null = null;
 
@@ -110,14 +112,12 @@ export function markLaserZone(node: unknown): void {
   const start = (event: TouchEvent) => {
     const handler = laserTouchHandler;
     if (!handler) return;
-    let capture = false;
     for (const touch of Array.from(event.changedTouches)) {
       // A finger on the fire button stays a shot, even when Safari hit-tests the stick.
       if (clientInside('[data-alien-fire]', touch.clientX, touch.clientY)) continue;
       const point = localPoint(touch);
-      if (handler(touch.identifier, point.x, point.y)) capture = true;
+      handler(touch.identifier, point.x, point.y);
     }
-    if (capture && event.cancelable) event.preventDefault();
   };
   const end = (event: TouchEvent) => {
     const handler = laserReleaseHandler;
@@ -152,7 +152,10 @@ export function bindControls(
     }
   };
   fireTouchHandler = claimFireTouch;
-  fireReleaseHandler = (id) => {
+  const touchPointers = new Set<number>();
+  fireReleaseHandler = (id, fromCancel = false) => {
+    // iOS cancels the touch event while the pointer is still held down.
+    if (fromCancel && touchPointers.has(id)) return;
     controls.pointerUp(id);
   };
   laserTouchHandler = (id, x, y) => {
@@ -168,48 +171,55 @@ export function bindControls(
     if (controls.laserId === id) controls.pointerUp(id);
   };
 
-  const syncLiveTouches = (event: TouchEvent) => {
-    controls.syncTouches(Array.from(event.touches, (touch) => touch.identifier));
+  const syncLiveTouches = (event: TouchEvent, includeChanged = false) => {
+    const ids = Array.from(event.touches, (touch) => touch.identifier);
+    // iOS can omit the new finger from event.touches on the window listener.
+    if (includeChanged) {
+      for (const touch of Array.from(event.changedTouches)) {
+        if (!ids.includes(touch.identifier)) ids.push(touch.identifier);
+      }
+    }
+    controls.syncTouches(ids);
+  };
+
+  const contactDown = (id: number, clientX: number, clientY: number, target: EventTarget | null): boolean => {
+    const point = local(clientX, clientY);
+    const ship = getShip();
+    const targetFire = fireZone(target);
+    const targetLaser = !targetFire && laserZone(target);
+    const onFireButton = controls.onFireButton(point.x, point.y) || clientInside('[data-alien-fire]', clientX, clientY);
+    const surface = resolveTouchSurface({
+      target: targetFire ? 'fire' : targetLaser ? 'laser' : 'other',
+      onFireButton,
+      laserArmed: controls.laserArmed(),
+      onLaserStick: controls.onLaserStick(point.x, point.y),
+    });
+    if (surface === 'fire') {
+      controls.claimFire(id, point.x, point.y, ship.x, ship.y);
+      return true;
+    }
+    if (surface === 'laser') {
+      controls.claimLaser(id, point.x, point.y);
+      if (controls.laserId === id) return false;
+    }
+    const role = controls.pointerDown(id, point.x, point.y, ship.x, ship.y);
+    const onFire = controls.fireId === id || controls.onFireButton(point.x, point.y);
+    const slot = onFire ? null : slotIndex(target);
+    if (slot != null) controls.claimPower(id, slot);
+    const onUi = uiNode(target);
+    const decision = classifyTouch(onUi, role, controls.fireId === id, slot != null || role === 'power');
+    if (decision.dropPlayPointer) controls.pointerUp(id);
+    return decision.play;
   };
 
   const onTouchStart = (event: TouchEvent) => {
-    if (isUiOpen()) {
-      if (!uiNode(event.target) && event.cancelable) event.preventDefault();
-      return;
-    }
-    const ship = getShip();
+    if (touchPointers.size > 0) return;
+    if (isUiOpen()) return;
     let play = false;
-    let cancel = true;
+    const sole = event.changedTouches.length === 1;
     for (const touch of Array.from(event.changedTouches)) {
-      const point = local(touch.clientX, touch.clientY);
-      const targetFire = fireZone(touch.target) || (event.changedTouches.length === 1 && fireZone(event.target));
-      const targetLaser = laserZone(touch.target) || (event.changedTouches.length === 1 && laserZone(event.target));
-      const onFireButton = controls.onFireButton(point.x, point.y) || clientInside('[data-alien-fire]', touch.clientX, touch.clientY);
-      const surface = resolveTouchSurface({
-        target: targetFire ? 'fire' : targetLaser ? 'laser' : 'other',
-        onFireButton,
-        laserArmed: controls.laserArmed(),
-        onLaserStick: controls.onLaserStick(point.x, point.y),
-      });
-      if (surface === 'fire') {
-        controls.claimFire(touch.identifier, point.x, point.y, ship.x, ship.y);
-        play = true;
-        continue;
-      }
-      if (surface === 'laser') {
-        controls.claimLaser(touch.identifier, point.x, point.y);
-        if (controls.laserId === touch.identifier) continue;
-      }
-      const role = controls.pointerDown(touch.identifier, point.x, point.y, ship.x, ship.y);
-      const onFire = controls.fireId === touch.identifier || controls.onFireButton(point.x, point.y);
-      const slot = onFire ? null : (slotIndex(touch.target) ?? (event.changedTouches.length === 1 ? slotIndex(event.target) : null));
-      if (slot != null) controls.claimPower(touch.identifier, slot);
-      const target = touch.target ?? event.target;
-      const onUi = uiNode(target);
-      const decision = classifyTouch(onUi, role, controls.fireId === touch.identifier, slot != null || role === 'power');
-      if (decision.dropPlayPointer) controls.pointerUp(touch.identifier);
-      if (decision.play) play = true;
-      if (!decision.cancel) cancel = false;
+      const target = touch.target ?? (sole ? event.target : null);
+      if (contactDown(touch.identifier, touch.clientX, touch.clientY, target)) play = true;
     }
     if (play) {
       try {
@@ -218,11 +228,11 @@ export function bindControls(
         // A sound or wake-lock failure must not cancel the finger already claimed.
       }
     }
-    if (cancel && event.cancelable) event.preventDefault();
-    syncLiveTouches(event);
+    syncLiveTouches(event, true);
   };
 
   const onTouchMove = (event: TouchEvent) => {
+    if (touchPointers.size > 0) return;
     if (isUiOpen()) {
       syncLiveTouches(event);
       return;
@@ -237,16 +247,17 @@ export function bindControls(
   };
 
   const onTouchEnd = (event: TouchEvent) => {
+    if (touchPointers.size > 0) return;
     // Cancelling touchend suppresses the click mobile browsers send to a button.
     const onUi = uiNode(event.target);
     const onSlot = slotIndex(event.target) != null;
     if (!isUiOpen() && event.type !== 'touchcancel' && (!onUi || onSlot) && event.cancelable) event.preventDefault();
-    const stickCancel = event.type === 'touchcancel' && (laserZone(event.target) || Array.from(event.changedTouches).some((touch) => laserZone(touch.target)));
+    const fromCancel = event.type === 'touchcancel';
     for (const touch of Array.from(event.changedTouches)) {
-      if (stickCancel && controls.fireId === touch.identifier) continue;
+      if (fromCancel && controls.fireId === touch.identifier) continue;
       controls.pointerUp(touch.identifier);
     }
-    if (stickCancel && controls.fireId != null) {
+    if (fromCancel && controls.fireId != null) {
       const live = Array.from(event.touches, (touch) => touch.identifier);
       if (!live.includes(controls.fireId)) live.push(controls.fireId);
       controls.syncTouches(live);
@@ -257,6 +268,26 @@ export function bindControls(
   };
 
   const onPointerDown = (event: PointerEvent) => {
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      if (isUiOpen()) return;
+      touchPointers.add(event.pointerId);
+      const node = event.target;
+      if (node instanceof Element) {
+        try {
+          node.setPointerCapture(event.pointerId);
+        } catch {
+          // Capture can fail when the target is not connected. The id is still tracked.
+        }
+      }
+      if (contactDown(event.pointerId, event.clientX, event.clientY, event.target)) {
+        try {
+          onPress();
+        } catch {
+          // Keep the finger if audio setup throws.
+        }
+      }
+      return;
+    }
     if (event.pointerType !== 'mouse') return;
     if (isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
@@ -293,6 +324,13 @@ export function bindControls(
   };
 
   const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      if (isUiOpen()) return;
+      if (event.cancelable) event.preventDefault();
+      const point = local(event.clientX, event.clientY);
+      controls.pointerMove(event.pointerId, point.x, point.y);
+      return;
+    }
     if (event.pointerType !== 'mouse' || isUiOpen()) return;
     const point = local(event.clientX, event.clientY);
     controls.hover(point.x, point.y);
@@ -301,6 +339,11 @@ export function bindControls(
   };
 
   const onPointerUp = (event: PointerEvent) => {
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      touchPointers.delete(event.pointerId);
+      controls.pointerUp(event.pointerId);
+      return;
+    }
     if (event.pointerType !== 'mouse' || isUiOpen()) return;
     controls.mouseUp(event.button);
   };

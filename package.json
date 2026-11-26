@@ -38,7 +38,8 @@
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web && node scripts/patch-web-export.js",
     "preview:web": "node scripts/preview-web.js",
-    "test:touch": "node scripts/multitouch-check.cjs"
+    "test:touch": "node scripts/multitouch-check.cjs",
+    "test:webkit": "node scripts/webkit-fire-check.cjs"
   },
   "private": true
 }
