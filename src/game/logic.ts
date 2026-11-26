@@ -507,7 +507,11 @@ function tickBlast(state: GameState, dt: number): void {
 function fire(state: GameState, intent: Intent, dt: number): void {
   const rapid = state.rapidTimer > 0;
   const laserOn = state.laserTimer > 0;
+  const wasFiring = state.firing;
   state.firing = intent.firing && !laserOn && (rapid || state.ammo > 0);
+  // A new press shoots on that frame. A one-frame tap must not be swallowed
+  // by cooldown left over from the previous burst.
+  if (state.firing && !wasFiring) state.fireCooldown = Math.min(0, state.fireCooldown);
   if (laserOn) {
     state.spark += dt;
     if (state.spark >= 0.04) {

@@ -41,7 +41,7 @@ function domElement(node: unknown): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
 }
 
-const TOUCH_BUILD = 'touch-hit-1';
+const TOUCH_BUILD = 'touch-hit-2';
 let paintPressed: (down: boolean) => void = () => {};
 let rememberTouch: (line: string) => void = () => {};
 
@@ -197,6 +197,7 @@ export function bindControls(
     if (controls.fireId != null && controls.fireId !== id) controls.pointerUp(controls.fireId);
     controls.claimFire(id, x, y, ship.x, ship.y);
     syncPressed();
+    rememberTouch(`claimed id=${id} fireId=${controls.fireId ?? 'none'} firing=${controls.frame().firing}`);
     try {
       onPress();
     } catch {
@@ -210,6 +211,7 @@ export function bindControls(
     if (fromCancel && touchPointers.has(id)) return;
     controls.pointerUp(id);
     syncPressed();
+    rememberTouch(`released id=${id} fireId=${controls.fireId ?? 'none'} firing=${controls.frame().firing}`);
   };
   laserTouchHandler = (id, x, y) => {
     if (isUiOpen() || !controls.laserArmed()) return false;
@@ -464,7 +466,7 @@ export function bindControls(
   rememberTouch = (line: string) => {
     if (!debugOn) return;
     debugLines.unshift(line);
-    if (debugLines.length > 8) debugLines.length = 8;
+    if (debugLines.length > 12) debugLines.length = 12;
     if (!debugPanel) {
       debugPanel = document.createElement('div');
       debugPanel.id = 'alien-touch-debug';
@@ -474,7 +476,10 @@ export function bindControls(
       document.body.appendChild(debugPanel);
     }
     const bound = document.querySelector('[data-alien-fire]')?.getAttribute('data-fire-bound') ?? 'missing';
-    debugPanel.textContent = [`build ${TOUCH_BUILD} fireBound=${bound}`, ...debugLines].join('\n');
+    const snap = (window as unknown as { __ALIEN__?: { snapshot: () => { shotsFired: number } } }).__ALIEN__?.snapshot();
+    const shots = snap ? snap.shotsFired : '?';
+    const latch = `latch fireId=${controls.fireId ?? 'none'} firing=${controls.frame().firing} shots=${shots}`;
+    debugPanel.textContent = [`build ${TOUCH_BUILD} fireBound=${bound}`, latch, ...debugLines].join('\n');
   };
   const stopWatchingFire = watchFireButtons();
   const touchOptions: AddEventListenerOptions = { capture: true, passive: false };

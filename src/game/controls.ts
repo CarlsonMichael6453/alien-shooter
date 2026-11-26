@@ -10,6 +10,11 @@ export const SLOT_HIT_SLOP = 12;
  * Analog stick output in [-1, 1]. `t` is the travel from the dead zone to the
  * rim, clamped at the edge. Speed fraction is `t` to the power 1.5.
  */
+/** Left mouse is -1 and right or middle mouse is -2. iOS touch identifiers are large negative numbers. */
+function isMouseId(id: number): boolean {
+  return id === -1 || id === -2;
+}
+
 export function stickResponse(dx: number, dy: number, radius: number): { x: number; y: number } {
   if (radius <= 0) return { x: 0, y: 0 };
   const mag = Math.hypot(dx, dy);
@@ -134,7 +139,8 @@ export class Controls {
    * earlier coordinate check called it a drag or a slot.
    */
   claimFire(id: number, x: number, y: number, shipX: number, shipY: number): void {
-    if (id < 0) return;
+    // -1 and -2 are the mouse buttons. iOS touch identifiers are large negatives.
+    if (isMouseId(id)) return;
     if (this.fireId != null && this.fireId !== id) return;
     if (this.moveId === id) {
       this.pointers.delete(id);
@@ -167,7 +173,7 @@ export class Controls {
    * or any touch while the laser is off.
    */
   claimLaser(id: number, x: number, y: number): void {
-    if (id < 0) return;
+    if (isMouseId(id)) return;
     if (!this.laserArmed()) return;
     if (this.fireId === id || this.onFireButton(x, y)) return;
     if (this.hitsInventory(x, y) >= 0) return;
@@ -211,16 +217,16 @@ export class Controls {
       this.chromeRequest = true;
       return 'chrome';
     }
-    if (id >= 0 && this.fireId == null && this.inside(this.fireRect, x, y)) {
+    if (!isMouseId(id) && this.fireId == null && this.inside(this.fireRect, x, y)) {
       this.fireId = id;
       this.pointers.set(id, { id, role: 'fire', x, y, originX: x, originY: y, shipX, shipY });
       return 'play';
     }
-    if (id >= 0 && this.inside(this.laserRect, x, y)) {
+    if (!isMouseId(id) && this.inside(this.laserRect, x, y)) {
       this.claimLaser(id, x, y);
       return 'play';
     }
-    if (this.scheme === 'joystick' && id >= 0) return this.claimPad(id, x, y, shipX, shipY);
+    if (this.scheme === 'joystick' && !isMouseId(id)) return this.claimPad(id, x, y, shipX, shipY);
     if (this.moveId == null) {
       this.moveId = id;
       this.pointers.set(id, {
@@ -258,11 +264,11 @@ export class Controls {
     track.y = y;
   }
 
-  /** Drop fingers that are no longer on the screen. Mouse buttons use negative ids and are left alone. */
+  /** Drop fingers that are no longer on the screen. Mouse buttons stay until mouseup. */
   syncTouches(live: Iterable<number>): void {
     const down = new Set(live);
     for (const id of [...this.pointers.keys()]) {
-      if (id < 0 || down.has(id)) continue;
+      if (isMouseId(id) || down.has(id)) continue;
       this.pointerUp(id);
     }
   }
@@ -366,7 +372,7 @@ export class Controls {
     let targetY = 0;
     let stickX = 0;
     let stickY = 0;
-    const stickHeld = this.scheme === 'joystick' && this.moveId != null && this.moveId >= 0;
+    const stickHeld = this.scheme === 'joystick' && this.moveId != null && !isMouseId(this.moveId);
     if (this.moveId != null) {
       const track = this.pointers.get(this.moveId);
       if (track) {

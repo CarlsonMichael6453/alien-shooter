@@ -99,7 +99,7 @@ async function main() {
     assert(afterTap.ammo < beforeTap.ammo, `webkit tap ammo ${beforeTap.ammo} -> ${afterTap.ammo}`);
     assert(tapLog.some((entry) => entry.fire && (entry.type === 'touchstart' || entry.type === 'pointerdown')), 'tap missed the fire button');
     const debugText = await page.locator('#alien-touch-debug').innerText();
-    assert(debugText.includes('touch-hit-1'), `debug readout missing build: ${debugText}`);
+    assert(debugText.includes('touch-hit-2'), `debug readout missing build: ${debugText}`);
     assert(/touchstart|pointerdown/.test(debugText), `debug readout had no touch: ${debugText}`);
     await page.screenshot({ path: '/opt/cursor/artifacts/webkit-tap-fires.png' });
     const missedPointer = await page.evaluate(async () => {
@@ -246,6 +246,91 @@ async function main() {
     assert(both.moveId != null, 'drag finger was not steering');
     assert(both.shotsFired > dragFrom, 'no bullets while dragging and firing');
     await page.screenshot({ path: '/opt/cursor/artifacts/webkit-drag-and-fire.png' });
+
+    // Real iOS identifiers are large negative numbers, and a tap is
+    // pointerdown, touchstart, touchend, pointerup before the next paint.
+    const negativeId = -1564415210;
+    const negativePoint = await firePoint();
+    await page.evaluate(() => {
+      window.__ALIEN__.apply((state) => {
+        state.mode = 'playing';
+        state.ammo = 200;
+        state.lives = 3;
+        state.invuln = 2;
+        state.fireCooldown = 0;
+        state.firing = false;
+      });
+    });
+    const negativeBefore = (await snap()).shotsFired;
+    await page.evaluate(({ x, y, id }) => {
+      const fire = document.querySelector('[data-alien-fire]');
+      const pointer = (type, buttons) =>
+        fire.dispatchEvent(new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: id,
+          pointerType: 'touch',
+          clientX: x,
+          clientY: y,
+          button: 0,
+          buttons,
+          isPrimary: true,
+        }));
+      const touch = (type, down) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        const point = { identifier: id, clientX: x, clientY: y, target: fire };
+        Object.defineProperty(event, 'changedTouches', { value: [point] });
+        Object.defineProperty(event, 'touches', { value: down ? [point] : [] });
+        fire.dispatchEvent(event);
+      };
+      pointer('pointerdown', 1);
+      touch('touchstart', true);
+      touch('touchend', false);
+      pointer('pointerup', 0);
+    }, { ...negativePoint, id: negativeId });
+    await page.waitForTimeout(250);
+    const negativeTap = await snap();
+    assert(negativeTap.shotsFired >= negativeBefore + 1, `negative id tap shots ${negativeBefore} -> ${negativeTap.shotsFired}`);
+    const latchText = await page.locator('#alien-touch-debug').innerText();
+    assert(latchText.includes('latch fireId='), `debug readout missing the latch: ${latchText}`);
+    assert(latchText.includes(`id=${negativeId}`), `debug readout missing the negative id: ${latchText}`);
+    assert(latchText.includes(`claimed id=${negativeId}`), `the negative id was not claimed: ${latchText}`);
+    assert(latchText.includes('firing=true'), `the latch never saw the finger down: ${latchText}`);
+
+    const holdFrom = negativeTap.shotsFired;
+    await page.evaluate(({ x, y, id }) => {
+      const fire = document.querySelector('[data-alien-fire]');
+      fire.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch',
+        clientX: x, clientY: y, button: 0, buttons: 1, isPrimary: true,
+      }));
+      const event = new Event('touchstart', { bubbles: true, cancelable: true });
+      const point = { identifier: id, clientX: x, clientY: y, target: fire };
+      Object.defineProperty(event, 'changedTouches', { value: [point] });
+      Object.defineProperty(event, 'touches', { value: [point] });
+      fire.dispatchEvent(event);
+    }, { ...negativePoint, id: negativeId });
+    await page.waitForTimeout(420);
+    const heldNegative = await snap();
+    const negativeGained = heldNegative.shotsFired - holdFrom;
+    assert(heldNegative.firing === true, 'negative id hold was not still firing');
+    assert(negativeGained >= 4 && negativeGained <= 8, `negative id hold shots in 420ms: ${negativeGained}`);
+    await page.screenshot({ path: '/opt/cursor/artifacts/webkit-negative-id-hold.png' });
+    await page.evaluate(({ x, y, id }) => {
+      const fire = document.querySelector('[data-alien-fire]');
+      const event = new Event('touchend', { bubbles: true, cancelable: true });
+      const point = { identifier: id, clientX: x, clientY: y, target: fire };
+      Object.defineProperty(event, 'changedTouches', { value: [point] });
+      Object.defineProperty(event, 'touches', { value: [] });
+      fire.dispatchEvent(event);
+      fire.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch',
+        clientX: x, clientY: y, button: 0, buttons: 0, isPrimary: true,
+      }));
+    }, { ...negativePoint, id: negativeId });
+    await page.waitForTimeout(200);
+    const negativeReleased = await snap();
+    assert(negativeReleased.firing === false, 'negative id hold stayed on after touchend');
 
     const sw = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return { supported: false, registrations: 0 };
