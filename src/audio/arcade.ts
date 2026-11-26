@@ -2,7 +2,7 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
-import { sampleCurvedShot, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type CurvedShot, type ThumpShot } from './shots';
+import { sampleCurvedShot, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type ChirpShot, type CurvedShot, type ThumpShot } from './shots';
 import { musicNotesDue, pewAllowed, shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
@@ -160,7 +160,29 @@ class ArcadeAudio {
       this.playBells(shot, now);
       return;
     }
+    if (shot.kind === 'chirp') {
+      this.playChirp(shot, now);
+      return;
+    }
     this.playCurve(shot, now);
+  }
+
+  /** Square chirp: exponential pitch drop and an exponential fall to the noise floor. */
+  private playChirp(shot: ChirpShot, now: number): void {
+    const ctx = this.ctx;
+    const dest = this.sfxGain;
+    if (!ctx || !dest) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = shot.type;
+    osc.frequency.setValueAtTime(shot.from, now);
+    osc.frequency.exponentialRampToValueAtTime(shot.to, now + shot.dur);
+    gain.gain.setValueAtTime(shot.gain, now);
+    gain.gain.exponentialRampToValueAtTime(shot.floor, now + shot.dur);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + shot.dur + 0.02);
   }
 
   /** Three stacked sine partials per strike, plus a short noise shimmer. */
