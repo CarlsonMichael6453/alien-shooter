@@ -32,8 +32,8 @@ export function MainMenu({
         <Text style={styles.kicker}>ENDLESS</Text>
         <Text style={styles.title}>ALIEN{'\n'}SHOOTER</Text>
         <Text style={styles.body}>Drag to move. Hold the fire button. Pick up a power-up, then tap it.</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Play" onPress={onPlay} style={styles.primary}>
-          <Text style={styles.primaryText}>PLAY</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Endless" onPress={onPlay} style={styles.primary}>
+          <Text style={styles.primaryText}>ENDLESS</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"

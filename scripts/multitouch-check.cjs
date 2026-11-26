@@ -106,10 +106,10 @@ async function webkitFireTap() {
   try {
     await page.goto(`http://127.0.0.1:${port}${prefix}/?debug=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__ALIEN__ && window.__ALIEN__.snapshot().width > 0);
-    const play = page.getByRole('button', { name: 'Play' });
+    const play = page.getByRole('button', { name: 'Endless' });
     await play.waitFor({ state: 'visible' });
     const playBox = await play.boundingBox();
-    assert(playBox, 'Play button has no on-screen box');
+    assert(playBox, 'Endless button has no on-screen box');
     await page.touchscreen.tap(playBox.x + playBox.width / 2, playBox.y + playBox.height / 2);
     await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing', null, { timeout: 3000 });
     const fireButton = page.getByLabel('Fire button', { exact: true });
@@ -172,18 +172,18 @@ async function main() {
     assert(before.mode === 'ready', `expected ready, got ${before.mode}`);
     assert(before.shotsFired === 0, 'title screen should not be firing');
 
-    // The title screen is the Play menu. Start the way a player does: tap that button.
-    const play = page.getByRole('button', { name: 'Play' });
+    // The title screen offers Endless and Campaign. Start the way a player does: tap Endless.
+    const play = page.getByRole('button', { name: 'Endless' });
     await play.waitFor({ state: 'visible' });
     const playBox = await play.boundingBox();
-    assert(playBox, 'Play button has no on-screen box');
+    assert(playBox, 'Endless button has no on-screen box');
     const playX = playBox.x + playBox.width / 2;
     const playY = playBox.y + playBox.height / 2;
     await touch(client, 'touchStart', [{ id: 1, x: playX, y: playY }]);
     await touch(client, 'touchEnd', [{ id: 1, x: playX, y: playY }]);
     await page.waitForFunction(() => window.__ALIEN__.snapshot().mode === 'playing', null, { timeout: 3000 });
     const started = await snap();
-    assert(started.mode === 'playing', 'Play button did not start the game');
+    assert(started.mode === 'playing', 'Endless button did not start the game');
     assert(started.shotsFired === 0, 'starting the game fired a shot');
 
     const viewport = page.viewportSize();
