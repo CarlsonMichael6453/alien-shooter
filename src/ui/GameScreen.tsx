@@ -94,7 +94,6 @@ const INITIAL_HUD: HudModel = {
   upgradeFlash: 0,
   bossHp: 0,
   bossMax: 0,
-  shieldTimer: 0,
   wingmanTimer: 0,
   warpTimer: 0,
   missileLeft: 0,

@@ -31,7 +31,6 @@ import {
   RAPID_DURATION,
   RAPID_RATE,
   SECTOR_BANNER,
-  SHIELD_DURATION,
   SHIP_HIT_RADIUS,
   SHIP_MARGIN,
   START_AMMO,
@@ -149,7 +148,6 @@ export function createGame(
     rapidTimer: 0,
     laserTimer: 0,
     laserAngle: -Math.PI / 2,
-    shieldTimer: 0,
     shieldHits: 0,
     wingmanTimer: 0,
     wingmanCooldown: 0,
@@ -331,7 +329,6 @@ function restart(state: GameState): void {
   state.rapidTimer = 0;
   state.laserTimer = 0;
   state.laserAngle = -Math.PI / 2;
-  state.shieldTimer = 0;
   state.shieldHits = 0;
   state.wingmanTimer = 0;
   state.wingmanCooldown = 0;
@@ -408,21 +405,13 @@ function updateAim(state: GameState, intent: Intent): void {
   }
 }
 
-function normalizeShield(state: GameState): void {
-  if (state.shieldHits <= 0 || state.shieldTimer <= 0) {
-    state.shieldHits = 0;
-    state.shieldTimer = 0;
-  }
-}
-
 function tickPowers(state: GameState, dt: number): void {
   state.rapidTimer = Math.max(0, state.rapidTimer - dt);
   state.laserTimer = Math.max(0, state.laserTimer - dt);
   state.wingmanTimer = Math.max(0, state.wingmanTimer - dt);
   state.warpTimer = Math.max(0, state.warpTimer - dt);
   state.sectorBanner = Math.max(0, state.sectorBanner - dt);
-  if (state.shieldTimer > 0) state.shieldTimer = Math.max(0, state.shieldTimer - dt);
-  normalizeShield(state);
+  if (state.shieldHits < 0) state.shieldHits = 0;
 }
 
 /** Powers that still take the single active slot. Shield and warp are not in this list. */
@@ -442,6 +431,7 @@ function activatePower(state: GameState, intent: Intent): void {
   if (intent.activateSlot == null) return;
   const kind = state.inventory[intent.activateSlot];
   if (!kind) return;
+  if (kind === 'shield' && state.shieldHits > 0) return;
   const stacks = kind === 'shield' || kind === 'warp';
   if (!stacks && exclusivePowerActive(state)) return;
   state.inventory.splice(intent.activateSlot, 1);
@@ -455,7 +445,6 @@ function activatePower(state: GameState, intent: Intent): void {
     return;
   }
   if (kind === 'shield') {
-    state.shieldTimer = SHIELD_DURATION;
     state.shieldHits = 1;
     return;
   }

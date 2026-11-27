@@ -56,7 +56,6 @@ export function publishHud(
     prev.hint === hint &&
     Math.abs(prev.rapidTimer - state.rapidTimer) < 0.05 &&
     Math.abs(prev.laserTimer - state.laserTimer) < 0.05 &&
-    Math.abs(prev.shieldTimer - state.shieldTimer) < 0.05 &&
     Math.abs(prev.wingmanTimer - state.wingmanTimer) < 0.05 &&
     Math.abs(prev.warpTimer - state.warpTimer) < 0.05 &&
     prev.missileLeft === state.missileLeft &&
@@ -96,7 +95,6 @@ export function publishHud(
     upgradeFlash: state.upgradeFlash,
     bossHp: state.boss?.hp ?? 0,
     bossMax: state.boss?.maxHp ?? 0,
-    shieldTimer: state.shieldTimer,
     wingmanTimer: state.wingmanTimer,
     warpTimer: state.warpTimer,
     missileLeft: state.missileLeft,

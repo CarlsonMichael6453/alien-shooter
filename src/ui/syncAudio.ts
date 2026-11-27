@@ -17,7 +17,7 @@ export function syncAudio(
     if (!state.boss && prev.boss) audio.bossWin();
     if (state.enemyBullets.length > prev.enemyShots + 2) audio.bossAttack();
     if (state.pickups.length < prev.pickups) audio.pickup();
-    if (state.shieldTimer > 0 && prev.shield === 0) audio.power('shield', state.shipId);
+    if (state.shieldHits > 0 && prev.shield === 0) audio.power('shield', state.shipId);
     if (state.wingmanTimer > 0 && prev.wing === 0) audio.power('wingman', state.shipId);
     if (state.warpTimer > 0 && prev.warp === 0) audio.power('warp', state.shipId);
     if (state.rapidTimer > 0 && prev.rapid === 0) audio.power('rapid', state.shipId);
@@ -31,7 +31,7 @@ export function syncAudio(
   prev.blast = state.blast != null;
   prev.boss = state.boss != null;
   prev.pickups = state.pickups.length;
-  prev.shield = state.shieldTimer;
+  prev.shield = state.shieldHits;
   prev.wing = state.wingmanTimer;
   prev.warp = state.warpTimer;
   prev.rapid = state.rapidTimer;

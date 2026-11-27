@@ -43,7 +43,6 @@ export interface HudModel {
   upgradeFlash: number;
   bossHp: number;
   bossMax: number;
-  shieldTimer: number;
   wingmanTimer: number;
   warpTimer: number;
   missileLeft: number;
@@ -524,7 +523,6 @@ function ElementBody({
         </View>
         {model.rapidTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>RAPID {model.rapidTimer.toFixed(1)}</Text> : null}
         {model.laserTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>LASER {model.laserTimer.toFixed(1)}</Text> : null}
-        {model.shieldTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SHIELD {model.shieldTimer.toFixed(1)}</Text> : null}
         {model.wingmanTimer > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>WING {model.wingmanTimer.toFixed(1)}</Text> : null}
         {model.warpTimer > 0 ? <Text style={[styles.timerLaser, { fontSize: 12 * scale }]}>WARP {model.warpTimer.toFixed(1)}</Text> : null}
         {model.missileLeft > 0 ? <Text style={[styles.timer, { fontSize: 12 * scale }]}>SWARM {model.missileLeft}</Text> : null}

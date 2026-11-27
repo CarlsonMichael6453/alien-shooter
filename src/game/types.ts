@@ -162,7 +162,6 @@ export interface GameState {
   rapidTimer: number;
   laserTimer: number;
   laserAngle: number;
-  shieldTimer: number;
   shieldHits: number;
   wingmanTimer: number;
   wingmanCooldown: number;
