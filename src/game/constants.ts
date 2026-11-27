@@ -38,7 +38,6 @@ export const AMMO_INTERVAL_FAST = 6.5 / 1.5;
 export const AMMO_WEIGHT_100 = 0.6;
 export const AMMO_WEIGHT_200 = 0.9;
 
-export const SHIELD_DURATION = 6;
 export const WINGMAN_DURATION = 8;
 export const WINGMAN_INTERVAL = 0.22;
 export const WARP_DURATION = 5;

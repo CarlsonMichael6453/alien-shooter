@@ -357,7 +357,13 @@ describe('simulation', () => {
     for (let minute = 0; minute < 10; minute += 1) {
       for (let t = 0; t < 60; t += 0.05) step(state, idleIntent(), 0.05);
       for (const kind of kinds) {
-        for (let i = 0; i < 400 && busy(); i += 1) step(state, idleIntent(), 0.05);
+        for (let i = 0; i < 400 && busy(); i += 1) {
+          if (state.shieldHits > 0) {
+            state.invuln = 0;
+            state.enemies.push(makeEnemy({ id: 8000 + minute * 1000 + i, x: state.shipX, y: state.shipY, r: 18, hp: 4, maxHp: 4, vy: 0 }));
+          }
+          step(state, idleIntent(), 0.05);
+        }
         assert.equal(busy(), false, `${kind} still busy at minute ${minute}`);
         state.inventory = [kind];
         step(state, idleIntent({ activateSlot: 0 }), 0.016);
@@ -373,14 +379,15 @@ describe('simulation', () => {
     }
   });
 
-  it('arms a shield again after it expires, after it blocks a hit, and after a restart', () => {
+  it('keeps a shield until a hit, ignores a second one, and clears it on restart', () => {
     const state = playing();
+    state.ammoCooldown = 999;
+    state.powerCooldown = 999;
     const arm = () => {
       state.inventory = ['shield'];
       state.invuln = 0;
       step(state, idleIntent({ activateSlot: 0 }), 0.016);
       assert.equal(state.shieldHits, 1);
-      assert.ok(state.shieldTimer > 5);
       assert.deepEqual(state.inventory, []);
     };
     const block = () => {
@@ -388,16 +395,19 @@ describe('simulation', () => {
       step(state, idleIntent(), 0.016);
       assert.equal(state.lives, 3);
       assert.equal(state.shieldHits, 0);
-      assert.equal(state.shieldTimer, 0);
+      assert.ok(state.invuln > 0);
     };
     arm();
-    block();
-    arm();
-    block();
-    arm();
     for (let i = 0; i < 140; i += 1) step(state, idleIntent(), 0.05);
-    assert.equal(state.shieldHits, 0);
-    assert.equal(state.shieldTimer, 0);
+    assert.equal(state.shieldHits, 1);
+    assert.equal(state.lives, 3);
+    state.inventory = ['shield'];
+    state.pickups.push({ id: 40, kind: 'shield', amount: 0, x: state.shipX, y: state.shipY, vy: 0, r: 16, spin: 0 });
+    step(state, idleIntent({ activateSlot: 0 }), 0.016);
+    assert.equal(state.shieldHits, 1);
+    assert.deepEqual(state.inventory, ['shield']);
+    assert.equal(state.pickups.length, 1);
+    block();
     arm();
     block();
     state.lives = 0;
@@ -409,6 +419,17 @@ describe('simulation', () => {
     assert.equal(state.shieldHits, 0);
     arm();
     block();
+
+    const campaign = playing();
+    campaign.ammoCooldown = 999;
+    campaign.powerCooldown = 999;
+    campaign.runKind = 'campaign';
+    campaign.introTimer = 99;
+    campaign.inventory = ['shield'];
+    step(campaign, idleIntent({ activateSlot: 0 }), 0.016);
+    for (let i = 0; i < 40; i += 1) step(campaign, idleIntent(), 0.05);
+    assert.equal(campaign.shieldHits, 1);
+    assert.equal(campaign.lives, 3);
   });
 
   it('follows the laser stick and keeps that angle after the stick is released', () => {
@@ -477,12 +498,11 @@ describe('simulation', () => {
     assert.equal(state.bomb, null);
   });
 
-  it('runs the shield, wingman, and time warp on a timer', () => {
+  it('blocks a hit with the shield, and runs the wingman and time warp on a timer', () => {
     const shield = playing();
     shield.inventory = ['shield'];
     step(shield, idleIntent({ activateSlot: 0 }), 0.016);
     assert.equal(shield.shieldHits, 1);
-    assert.ok(shield.shieldTimer > 5.5);
     shield.enemies.push(makeEnemy({ id: 9, x: shield.shipX, y: shield.shipY, r: 20, vy: 0, hp: 5, maxHp: 5 }));
     step(shield, idleIntent(), 0.016);
     assert.equal(shield.lives, 3);
