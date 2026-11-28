@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { CAMPAIGN_UNLOCK_SCORE, campaignCountLabel, campaignProgress, menuBestLabel } from '../game/campaign';
 import { BUNDLE_NAME, BUNDLE_PRICE_LABEL, PREMIUM_PRODUCTS, purchaseProduct, type Entitlements } from '../game/premium';
 import { SHIPS, shipUnlocked, type ShipStyle } from '../game/ships';
 import type { Profile } from './profile';
@@ -13,6 +14,7 @@ export function MainMenu({
   onPlay,
   onCampaign,
   campaignUnlocked,
+  bestScore,
   onShips,
   onScores,
   onSettings,
@@ -21,29 +23,45 @@ export function MainMenu({
   onPlay: () => void;
   onCampaign: () => void;
   campaignUnlocked: boolean;
+  bestScore: number;
   onShips: () => void;
   onScores: () => void;
   onSettings: () => void;
   onPrivacy: () => void;
 }) {
+  const progress = campaignProgress(bestScore);
   return (
-    <View ref={markUi} collapsable={false} pointerEvents="auto" style={styles.wrap}>
+    <View ref={markUi} collapsable={false} pointerEvents="auto" style={[styles.wrap, styles.menuWrap]}>
       <View style={styles.card}>
-        <Text style={styles.kicker}>ENDLESS</Text>
         <Text style={styles.title}>ALIEN{'\n'}SHOOTER</Text>
+        <Text style={styles.best}>{menuBestLabel(bestScore)}</Text>
         <Text style={styles.body}>Drag to move. Hold the fire button. Pick up a power-up, then tap it.</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Endless" onPress={onPlay} style={styles.primary}>
           <Text style={styles.primaryText}>ENDLESS</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={campaignUnlocked ? 'Campaign' : 'Reach 5,000 to unlock'}
+          accessibilityLabel={campaignUnlocked ? 'Campaign' : `Campaign, reach ${CAMPAIGN_UNLOCK_SCORE.toLocaleString('en-US')} to unlock`}
           accessibilityState={{ disabled: !campaignUnlocked }}
           disabled={!campaignUnlocked}
           onPress={onCampaign}
           style={styles.button}
         >
-          <Text style={styles.buttonText}>{campaignUnlocked ? 'Campaign' : 'Reach 5,000 to unlock'}</Text>
+          {campaignUnlocked ? (
+            <Text style={styles.buttonText}>Campaign</Text>
+          ) : (
+            <View style={styles.campaignLocked}>
+              <View style={styles.campaignTitle}>
+                <LockMark />
+                <Text style={styles.buttonText}>Campaign</Text>
+              </View>
+              <Text style={styles.campaignSub}>Reach 5,000 to unlock</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              </View>
+              <Text style={styles.campaignCount}>{campaignCountLabel(bestScore)}</Text>
+            </View>
+          )}
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onShips} style={styles.button}>
           <Text style={styles.buttonText}>Ships</Text>
@@ -51,12 +69,15 @@ export function MainMenu({
         <Pressable accessibilityRole="button" onPress={onScores} style={styles.button}>
           <Text style={styles.buttonText}>High scores</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={onSettings} style={styles.button}>
-          <Text style={styles.buttonText}>Settings</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" onPress={onPrivacy} style={styles.button}>
-          <Text style={styles.buttonText}>Privacy</Text>
-        </Pressable>
+        <View style={styles.footer}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Settings" onPress={onSettings} style={styles.footerHit}>
+            <Text style={styles.footerLink}>Settings</Text>
+          </Pressable>
+          <Text style={styles.footerDot}>·</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Privacy" onPress={onPrivacy} style={styles.footerHit}>
+            <Text style={styles.footerLink}>Privacy</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -272,6 +293,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 22,
+  },
+  menuWrap: {
+    justifyContent: 'center',
+    paddingTop: 28,
+    paddingBottom: 108,
+  },
+  best: {
+    color: '#7EF0FF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    marginTop: -2,
+    marginBottom: 8,
+  },
+  campaignLocked: {
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+  },
+  campaignTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  campaignSub: {
+    color: '#9BB0C9',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  progressTrack: {
+    alignSelf: 'stretch',
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(126, 240, 255, 0.16)',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#7EF0FF',
+  },
+  campaignCount: {
+    color: '#D5E2F2',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  footer: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  footerHit: {
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  footerLink: {
+    color: '#9BB0C9',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  footerDot: {
+    color: '#5C7088',
+    fontSize: 13,
   },
   scrim: {
     backgroundColor: 'rgba(4, 8, 16, 0.72)',

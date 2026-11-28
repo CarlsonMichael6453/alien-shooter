@@ -255,6 +255,7 @@ export function Overlay({
           onPlay={onPlay}
           onCampaign={onCampaign}
           campaignUnlocked={campaignUnlocked}
+          bestScore={profile.bestScore}
           onShips={onOpenShips}
           onScores={onOpenScores}
           onSettings={onOpenSettings}

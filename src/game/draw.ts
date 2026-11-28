@@ -1,4 +1,5 @@
 import { hexPoints } from './abilityArt';
+import { menuShipBob, prefersReducedMotion } from './motion';
 import { LASER_PINCH, candyGlowQuad, candyQuads, laserLength } from './candyCane';
 import { shipStyle } from './ships';
 import { shipTheme, type ShipTheme } from './shipTheme';
@@ -115,10 +116,13 @@ function drawShip(painter: Painter, state: GameState): void {
   const paint = shipStyle(state.shipId);
   const look = shipTheme(state.shipId).look;
   painter.save();
-  painter.translate(state.shipX, state.shipY);
+  const idle = state.mode === 'ready';
+  const calm = idle && prefersReducedMotion();
+  const flick = calm ? 1 : 0.72 + Math.sin(state.time * (idle ? 18 : 42)) * 0.28;
+  painter.translate(state.shipX, state.shipY + (idle ? menuShipBob(state.time, calm) : 0));
   if (state.laserTimer > 0) painter.rotate(state.laserAngle + Math.PI / 2);
   if (look === 'festive') {
-    drawGingerbread(painter, blink);
+    drawGingerbread(painter, blink, flick);
     painter.restore();
     return;
   }
@@ -194,7 +198,6 @@ function drawShip(painter: Painter, state: GameState): void {
   painter.fillCircle(0, -2, 4.2, '#072033');
   painter.fillCircle(-1.2, -3.4, 1.5, 'rgba(184,246,255,0.95)');
 
-  const flick = 0.72 + Math.sin(state.time * 42) * 0.28;
   const length = (state.firing ? 24 : 13) * flick;
   painter.fillPolygon(
     [
@@ -243,7 +246,7 @@ function drawBow(painter: Painter, x: number, y: number, side: number): void {
   );
 }
 
-function drawGingerbread(painter: Painter, blink: boolean): void {
+function drawGingerbread(painter: Painter, blink: boolean, flick = 1): void {
   const wall = blink ? 'rgba(196,138,85,0.4)' : '#C48A55';
   const roof = blink ? 'rgba(122,72,40,0.4)' : '#7A4828';
   painter.fillPolygon(
@@ -274,7 +277,7 @@ function drawGingerbread(painter: Painter, blink: boolean): void {
   painter.fillPolygon(
     [
       [-4, 16],
-      [0, 28],
+      [0, 16 + 12 * flick],
       [4, 16],
     ],
     '#FFE08A',
