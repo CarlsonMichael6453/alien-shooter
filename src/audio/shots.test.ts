@@ -4,12 +4,13 @@ import { FIRE_INTERVAL } from '../game/constants';
 import { PEW_GAP, pewAllowed } from './shipThemes';
 import {
   DEEP_THUMP,
-  SHORT_CHIRP,
+  QUICK_DIVE,
   SLEIGH_BELLS,
   WOBBLE_RAY,
   bellPartialLevel,
-  chirpHz,
-  chirpLevel,
+  diveHz,
+  diveLevel,
+  sampleDive,
   shimmerLevel,
   sampleCurvedShot,
   sampleThump,
@@ -24,37 +25,47 @@ import {
 } from './shots';
 
 describe('shot sounds', () => {
-  it('gives every regular ship the short square chirp', () => {
+  it('gives every regular ship the quick sine dive', () => {
     for (const id of ['classic', 'ember', 'violet', 'gold', 'nope']) {
       const shot = shotFor(id);
-      assert.equal(shot, SHORT_CHIRP);
-      assert.equal(shot.kind, 'chirp');
-      assert.equal(shot.type, 'square');
-      assert.equal(shot.from, 2400);
-      assert.equal(shot.to, 500);
-      assert.equal(shot.dur, 0.07);
-      assert.equal(shot.gain, 0.22);
-      assert.equal(shot.floor, 0.0001);
+      assert.equal(shot, QUICK_DIVE);
+      assert.equal(shot.kind, 'dive');
+      assert.equal(shot.type, 'sine');
+      assert.equal(shot.dur, 0.08);
+      assert.equal(shot.rise, 0.0064);
+      assert.equal(shot.riseFrom, 4500);
+      assert.equal(shot.riseTo, 5100);
+      assert.equal(shot.dropTo, 500);
+      assert.equal(shot.attack, 0.008);
+      assert.equal(shot.decay, 34);
+      assert.equal(shot.gain, 0.11);
     }
   });
 
-  it('drops the chirp exponentially and is quiet before the next shot', () => {
-    assert.equal(chirpHz(SHORT_CHIRP, 0), 2400);
-    assert.ok(Math.abs(chirpHz(SHORT_CHIRP, 0.07) - 500) < 1e-9);
-    const mid = chirpHz(SHORT_CHIRP, 0.035);
-    assert.ok(Math.abs(mid - Math.sqrt(2400 * 500)) < 1e-6);
-    assert.equal(chirpLevel(SHORT_CHIRP, 0), 0.22);
-    assert.ok(Math.abs(chirpLevel(SHORT_CHIRP, 0.07) - 0.0001) < 1e-12);
-    const t = 0.03;
-    const expected = 0.22 * (0.0001 / 0.22) ** (t / 0.07);
-    assert.ok(Math.abs(chirpLevel(SHORT_CHIRP, t) - expected) < 1e-12);
-    assert.ok(SHORT_CHIRP.dur < FIRE_INTERVAL);
-    assert.ok(chirpLevel(SHORT_CHIRP, PEW_GAP) < 0.002);
-    assert.equal(shotGap(SHORT_CHIRP), PEW_GAP);
+  it('rises briefly, then front-loads the drop, and keeps the voice limiter', () => {
+    assert.equal(diveHz(QUICK_DIVE, 0), 4500);
+    assert.ok(Math.abs(diveHz(QUICK_DIVE, 0.0064) - 5100) < 1e-6);
+    assert.ok(Math.abs(diveHz(QUICK_DIVE, 0.08) - 500) < 1e-6);
+    const span = 0.08 - 0.0064;
+    const early = 0.0064 + span * 0.25;
+    const expectedEarly = 5100 * (500 / 5100) ** Math.sqrt(0.25);
+    assert.ok(Math.abs(diveHz(QUICK_DIVE, early) - expectedEarly) < 1e-6);
+    assert.ok(expectedEarly < 2000);
+    assert.equal(diveLevel(QUICK_DIVE, 0), 0);
+    const attackEnd = 0.11 * Math.exp(-34 * 0.008);
+    assert.ok(Math.abs(diveLevel(QUICK_DIVE, 0.008) - attackEnd) < 1e-12);
+    const t = 0.04;
+    assert.ok(Math.abs(diveLevel(QUICK_DIVE, t) - 0.11 * Math.exp(-34 * t)) < 1e-12);
+    assert.equal(QUICK_DIVE.dur, FIRE_INTERVAL);
+    assert.equal(shotGap(QUICK_DIVE), PEW_GAP);
     assert.equal(pewAllowed(0, 0.02), false);
     assert.equal(pewAllowed(0, 0.01), false);
     assert.equal(pewAllowed(0, 0.04), false);
     assert.equal(pewAllowed(0, FIRE_INTERVAL), true);
+    const sampled = sampleDive(QUICK_DIVE, 161);
+    assert.ok(Math.abs(sampled.freq[0] - 4500) < 1e-2);
+    assert.ok(Math.abs(sampled.freq[160] - 500) < 1);
+    assert.equal(sampled.amp[0], 0);
   });
 
   it('gives SuperPink the wobble ray', () => {

@@ -1,22 +1,27 @@
 /**
  * Shot voices, synthesized in Web Audio from these curves. No samples.
- * Regular ships share a short square chirp. SuperPink uses the wobble ray.
+ * Regular ships share a short sine dive. SuperPink uses the wobble ray.
  * Festive rings sleigh bells. MegaDark uses a deep thump.
  */
 import { PEW_GAP } from './shipThemes';
 
-export interface ChirpShot {
-  kind: 'chirp';
-  name: 'short-chirp';
-  /** Web Audio square is a 50% duty pulse. */
-  type: 'square';
-  from: number;
-  to: number;
+export interface DiveShot {
+  kind: 'dive';
+  name: 'quick-dive';
+  type: 'sine';
   dur: number;
-  /** Peak at t = 0. Same level the previous regular shot used. */
+  /** Exponential rise from riseFrom to riseTo. */
+  rise: number;
+  riseFrom: number;
+  riseTo: number;
+  /** Fast-front-loaded drop lands here at `dur`. */
+  dropTo: number;
+  /** Linear rise from silence. */
+  attack: number;
+  /** After the attack, loudness follows exp(-decay * t) from the start of the shot. */
+  decay: number;
+  /** Peak before the attack and decay. About half the old square chirp. */
   gain: number;
-  /** Exponential ramp lands here at `dur`. */
-  floor: number;
 }
 
 export interface CurvedShot {
@@ -82,18 +87,21 @@ export interface ThumpShot {
   gap: number;
 }
 
-export type ShotSpec = ChirpShot | CurvedShot | BellsShot | ThumpShot;
+export type ShotSpec = DiveShot | CurvedShot | BellsShot | ThumpShot;
 
 /** Shared by Classic, Ember, Violet, and Gold. */
-export const SHORT_CHIRP: ChirpShot = {
-  kind: 'chirp',
-  name: 'short-chirp',
-  type: 'square',
-  from: 2400,
-  to: 500,
-  dur: 0.07,
-  gain: 0.22,
-  floor: 0.0001,
+export const QUICK_DIVE: DiveShot = {
+  kind: 'dive',
+  name: 'quick-dive',
+  type: 'sine',
+  dur: 0.08,
+  rise: 0.0064,
+  riseFrom: 4500,
+  riseTo: 5100,
+  dropTo: 500,
+  attack: 0.008,
+  decay: 34,
+  gain: 0.11,
 };
 
 export const WOBBLE_RAY: CurvedShot = {
@@ -147,19 +155,42 @@ export function shotFor(shipId: string): ShotSpec {
   if (shipId === 'superpink') return WOBBLE_RAY;
   if (shipId === 'megadark') return DEEP_THUMP;
   if (shipId === 'festive') return SLEIGH_BELLS;
-  return SHORT_CHIRP;
+  return QUICK_DIVE;
 }
 
-/** f(t) = from * (to / from) ^ (t / dur). True exponential, not a power bend. */
-export function chirpHz(shot: ChirpShot, t: number): number {
-  const u = shot.dur <= 0 ? 1 : Math.min(1, Math.max(0, t / shot.dur));
-  return shot.from * (shot.to / shot.from) ** u;
+/**
+ * Sine pitch. Rises exponentially for `rise` seconds, then
+ * f = riseTo * (dropTo / riseTo) ^ sqrt(u) over the rest of the shot.
+ */
+export function diveHz(shot: DiveShot, t: number): number {
+  const time = Math.min(shot.dur, Math.max(0, t));
+  if (time <= shot.rise) {
+    const u = shot.rise <= 0 ? 1 : time / shot.rise;
+    return shot.riseFrom * (shot.riseTo / shot.riseFrom) ** u;
+  }
+  const span = Math.max(0.0001, shot.dur - shot.rise);
+  const u = Math.min(1, (time - shot.rise) / span);
+  return shot.riseTo * (shot.dropTo / shot.riseTo) ** Math.sqrt(u);
 }
 
-/** g(t) = gain * (floor / gain) ^ (t / dur). About e^(-110 t), so the tail is ~0.0001 at 0.07 s. */
-export function chirpLevel(shot: ChirpShot, t: number): number {
-  const u = shot.dur <= 0 ? 1 : Math.min(1, Math.max(0, t / shot.dur));
-  return shot.gain * (shot.floor / shot.gain) ** u;
+/** Linear attack, then exp(-decay * t) from the start of the shot. */
+export function diveLevel(shot: DiveShot, t: number): number {
+  if (t < 0 || t > shot.dur) return 0;
+  const attack = shot.attack <= 0 ? 1 : Math.min(1, t / shot.attack);
+  return shot.gain * attack * Math.exp(-shot.decay * t);
+}
+
+export function sampleDive(shot: DiveShot, frames: number): { freq: Float32Array; amp: Float32Array } {
+  const count = Math.max(2, frames);
+  const freq = new Float32Array(count);
+  const amp = new Float32Array(count);
+  const last = count - 1;
+  for (let i = 0; i < count; i += 1) {
+    const t = (i / last) * shot.dur;
+    freq[i] = diveHz(shot, t);
+    amp[i] = diveLevel(shot, t);
+  }
+  return { freq, amp };
 }
 
 /** MegaDark waits longer so the thump does not mush. Every other shot keeps the shared gap. */

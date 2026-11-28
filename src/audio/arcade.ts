@@ -2,7 +2,7 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
-import { sampleCurvedShot, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type ChirpShot, type CurvedShot, type ThumpShot } from './shots';
+import { sampleCurvedShot, sampleDive, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type CurvedShot, type DiveShot, type ThumpShot } from './shots';
 import { musicNotesDue, pewAllowed, shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
@@ -160,25 +160,31 @@ class ArcadeAudio {
       this.playBells(shot, now);
       return;
     }
-    if (shot.kind === 'chirp') {
-      this.playChirp(shot, now);
+    if (shot.kind === 'dive') {
+      this.playDive(shot, now);
       return;
     }
     this.playCurve(shot, now);
   }
 
-  /** Square chirp: exponential pitch drop and an exponential fall to the noise floor. */
-  private playChirp(shot: ChirpShot, now: number): void {
+  /** Sine dive: a short rise, then the sampled fast drop, with a soft attack. */
+  private playDive(shot: DiveShot, now: number): void {
     const ctx = this.ctx;
     const dest = this.sfxGain;
     if (!ctx || !dest) return;
+    const frames = 160;
+    const { freq, amp } = sampleDive(shot, frames);
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = shot.type;
-    osc.frequency.setValueAtTime(shot.from, now);
-    osc.frequency.exponentialRampToValueAtTime(shot.to, now + shot.dur);
-    gain.gain.setValueAtTime(shot.gain, now);
-    gain.gain.exponentialRampToValueAtTime(shot.floor, now + shot.dur);
+    const last = frames - 1;
+    osc.frequency.setValueAtTime(freq[0], now);
+    gain.gain.setValueAtTime(amp[0], now);
+    for (let i = 1; i < frames; i += 1) {
+      const at = now + (i / last) * shot.dur;
+      osc.frequency.linearRampToValueAtTime(freq[i], at);
+      gain.gain.linearRampToValueAtTime(amp[i], at);
+    }
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
