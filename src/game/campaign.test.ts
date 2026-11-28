@@ -7,8 +7,11 @@ import {
   CAMPAIGN_SECTORS,
   CAMPAIGN_UNLOCK_SCORE,
   beginCampaign,
+  campaignCountLabel,
+  campaignProgress,
   campaignUnlocked,
   devCampaignFromLocation,
+  menuBestLabel,
   onCampaignBossDown,
   parseCampaign,
   tickCampaign,
@@ -22,6 +25,12 @@ describe('campaign mode', () => {
     assert.equal(devCampaignFromLocation('?unlockCampaign=1'), true);
     assert.equal(devCampaignFromLocation('?unlockAll=1'), true);
     assert.equal(devCampaignFromLocation(''), false);
+    assert.equal(campaignProgress(0), 0);
+    assert.equal(campaignProgress(2500), 0.5);
+    assert.equal(campaignProgress(9000), 1);
+    assert.equal(menuBestLabel(3240), 'Best 3,240');
+    assert.equal(campaignCountLabel(3240), '3,240 / 5,000');
+    assert.equal(campaignCountLabel(9000), '5,000 / 5,000');
   });
 
   it('does not unlock the premium ships', () => {

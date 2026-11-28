@@ -31,6 +31,23 @@ export function campaignUnlocked(bestScore: number, dev = false): boolean {
   return dev || bestScore >= CAMPAIGN_UNLOCK_SCORE;
 }
 
+/** 0 to 1, for the locked campaign row on the start screen. */
+export function campaignProgress(bestScore: number): number {
+  if (!Number.isFinite(bestScore) || bestScore <= 0) return 0;
+  return Math.min(1, bestScore / CAMPAIGN_UNLOCK_SCORE);
+}
+
+export function menuBestLabel(bestScore: number): string {
+  const score = Number.isFinite(bestScore) ? Math.max(0, Math.floor(bestScore)) : 0;
+  return `Best ${score.toLocaleString('en-US')}`;
+}
+
+export function campaignCountLabel(bestScore: number): string {
+  const score = Number.isFinite(bestScore) ? Math.max(0, Math.floor(bestScore)) : 0;
+  const shown = Math.min(score, CAMPAIGN_UNLOCK_SCORE);
+  return `${shown.toLocaleString('en-US')} / ${CAMPAIGN_UNLOCK_SCORE.toLocaleString('en-US')}`;
+}
+
 export function devCampaignFromLocation(search: string): boolean {
   const query = new URLSearchParams(search);
   return query.get('unlockCampaign') === '1' || query.get('unlockAll') === '1';
