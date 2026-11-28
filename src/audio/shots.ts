@@ -79,6 +79,8 @@ export interface ThumpShot {
   harmonicDecay: number;
   /** Linear rise from silence, in seconds. */
   attack: number;
+  /** Linear fall to silence at the end, so the oscillator is not cut off. */
+  release: number;
   /** tanh soft-clip drive. */
   drive: number;
   /** Peak of the fundamental before the envelope. */
@@ -134,11 +136,14 @@ export const SLEIGH_BELLS: BellsShot = {
   shimmerDur: 0.12,
 };
 
+/** Fade the previous MegaDark thump this long before the next one speaks. */
+export const THUMP_HANDOFF = 0.012;
+
 export const DEEP_THUMP: ThumpShot = {
   kind: 'thump',
   name: 'deep-thump',
   type: 'sine',
-  dur: 0.3,
+  dur: 0.09,
   baseHz: 40,
   dropHz: 80,
   pitchDecay: 25,
@@ -146,6 +151,7 @@ export const DEEP_THUMP: ThumpShot = {
   harmonic: 0.3,
   harmonicDecay: 20,
   attack: 0.003,
+  release: THUMP_HANDOFF,
   drive: 1.5,
   gain: 0.45,
   gap: 0.08,
@@ -233,12 +239,22 @@ export function attackGain(attack: number, t: number): number {
   return Math.min(1, Math.max(0, t / attack));
 }
 
+/** 1 through the body, then a linear fall across `release` so the end is silent. */
+export function thumpReleaseGain(shot: ThumpShot, t: number): number {
+  if (t < 0 || t > shot.dur) return 0;
+  const start = Math.max(shot.attack, shot.dur - shot.release);
+  if (t <= start) return 1;
+  const span = shot.dur - start;
+  if (span <= 0) return 0;
+  return Math.max(0, 1 - (t - start) / span);
+}
+
 export function thumpFundamental(shot: ThumpShot, t: number): number {
-  return shot.gain * attackGain(shot.attack, t) * Math.exp(-shot.ampDecay * t);
+  return shot.gain * attackGain(shot.attack, t) * Math.exp(-shot.ampDecay * t) * thumpReleaseGain(shot, t);
 }
 
 export function thumpHarmonic(shot: ThumpShot, t: number): number {
-  return shot.gain * shot.harmonic * attackGain(shot.attack, t) * Math.exp(-shot.harmonicDecay * t);
+  return shot.gain * shot.harmonic * attackGain(shot.attack, t) * Math.exp(-shot.harmonicDecay * t) * thumpReleaseGain(shot, t);
 }
 
 /** tanh(drive * x) / tanh(drive), so the ends stay at -1 and 1. */

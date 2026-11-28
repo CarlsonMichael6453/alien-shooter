@@ -2,7 +2,7 @@
  * Original music and sound effects, synthesized in the browser with WebAudio.
  * There are no sampled recordings and no third-party audio files.
  */
-import { sampleCurvedShot, sampleDive, sampleThump, shotFor, shotGap, softClipCurve, type BellsShot, type CurvedShot, type DiveShot, type ThumpShot } from './shots';
+import { sampleCurvedShot, sampleDive, sampleThump, shotFor, shotGap, softClipCurve, THUMP_HANDOFF, type BellsShot, type CurvedShot, type DiveShot, type ThumpShot } from './shots';
 import { musicNotesDue, pewAllowed, shipMusic, type MusicVoice } from './shipThemes';
 
 export interface AudioSettings {
@@ -65,6 +65,7 @@ class ArcadeAudio {
   private lastPew = -1;
   private unlocked = false;
   private laser: LaserBed | null = null;
+  private thumpVoice: { master: GainNode; oscs: OscillatorNode[] } | null = null;
 
   installUnlock(): void {
     if (typeof window === 'undefined') return;
@@ -254,22 +255,25 @@ class ArcadeAudio {
     osc.stop(now + shot.dur + 0.02);
   }
 
-  /** Sine body, a quieter second harmonic, then a light tanh clip. */
+  /** One MegaDark thump. The previous voice fades out instead of stacking. */
   private playThump(shot: ThumpShot, now: number): void {
     const ctx = this.ctx;
     const dest = this.sfxGain;
     if (!ctx || !dest) return;
-    const frames = 128;
+    this.retireThump(now);
+    const frames = 96;
     const { freq, fund, harm } = sampleThump(shot, frames);
     const fundamental = ctx.createOscillator();
     const overtone = ctx.createOscillator();
     const fundGain = ctx.createGain();
     const harmGain = ctx.createGain();
     const shaper = ctx.createWaveShaper();
+    const master = ctx.createGain();
     fundamental.type = 'sine';
     overtone.type = 'sine';
     shaper.curve = softClipCurve(shot.drive);
     shaper.oversample = '2x';
+    master.gain.setValueAtTime(1, now);
     const last = frames - 1;
     fundamental.frequency.setValueAtTime(freq[0], now);
     overtone.frequency.setValueAtTime(freq[0] * 2, now);
@@ -286,12 +290,36 @@ class ArcadeAudio {
     overtone.connect(harmGain);
     fundGain.connect(shaper);
     harmGain.connect(shaper);
-    shaper.connect(dest);
+    shaper.connect(master);
+    master.connect(dest);
     fundamental.start(now);
     overtone.start(now);
     const stop = now + shot.dur + 0.02;
     fundamental.stop(stop);
     overtone.stop(stop);
+    this.thumpVoice = { master, oscs: [fundamental, overtone] };
+  }
+
+  /** 12 ms fade, then the oscillators stop. The next thump can start immediately. */
+  private retireThump(now: number): void {
+    const voice = this.thumpVoice;
+    if (!voice) return;
+    this.thumpVoice = null;
+    const done = now + THUMP_HANDOFF;
+    try {
+      voice.master.gain.cancelScheduledValues(now);
+      voice.master.gain.setValueAtTime(1, now);
+      voice.master.gain.linearRampToValueAtTime(0.0001, done);
+    } catch {
+      // A stopped context should not block the next shot.
+    }
+    for (const osc of voice.oscs) {
+      try {
+        osc.stop(done + 0.01);
+      } catch {
+        // Already stopped.
+      }
+    }
   }
 
   hit(): void {

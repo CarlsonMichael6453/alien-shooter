@@ -175,7 +175,6 @@ function collect(state: GameState, pickup: Pickup): boolean {
     burst(state, pickup.x, pickup.y, '#7EF0FF', 10);
     return true;
   }
-  if (pickup.kind === 'shield' && state.shieldHits > 0) return false;
   if (state.inventory.length >= MAX_INVENTORY) return false;
   state.inventory.push(pickup.kind);
   burst(state, pickup.x, pickup.y, pickup.kind === 'laser' ? '#FF4A2A' : '#FFE7B0', 8);

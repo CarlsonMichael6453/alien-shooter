@@ -15,6 +15,8 @@ import {
   sampleCurvedShot,
   sampleThump,
   shotFor,
+  THUMP_HANDOFF,
+  thumpReleaseGain,
   shotGap,
   shotLevel,
   softClipCurve,
@@ -133,13 +135,18 @@ describe('shot sounds', () => {
     assert.equal(shot, DEEP_THUMP);
     if (shot.kind !== 'thump') return;
     assert.equal(shot.type, 'sine');
-    assert.equal(shot.dur, 0.3);
+    assert.equal(shot.dur, 0.09);
+    assert.ok(shot.dur <= shot.gap + shot.release);
     assert.equal(shot.attack, 0.003);
+    assert.equal(shot.release, THUMP_HANDOFF);
+    assert.ok(shot.release >= 0.01 && shot.release <= 0.015);
     assert.equal(shot.drive, 1.5);
     assert.equal(shot.harmonic, 0.3);
     assert.equal(shotGap(shot), 0.08);
     assert.equal(shotGap(shotFor('classic')), 0.05);
-    assert.equal(pewAllowed(1, 1.07, shot.gap), false);
+    assert.equal(pewAllowed(1, 1.02, shot.gap), false);
+    assert.equal(pewAllowed(1, 1.01, shot.gap), false);
+    assert.equal(pewAllowed(1, 1.04, shot.gap), false);
     assert.equal(pewAllowed(1, 1.08, shot.gap), true);
     assert.equal(thumpHz(shot, 0), 120);
     const t = 0.04;
@@ -148,6 +155,9 @@ describe('shot sounds', () => {
     assert.ok(Math.abs(thumpFundamental(shot, 0.0015) - shot.gain * 0.5 * Math.exp(-9 * 0.0015)) < 1e-9);
     assert.ok(Math.abs(thumpFundamental(shot, t) - shot.gain * Math.exp(-9 * t)) < 1e-9);
     assert.ok(Math.abs(thumpHarmonic(shot, t) - shot.gain * 0.3 * Math.exp(-20 * t)) < 1e-9);
+    assert.equal(thumpReleaseGain(shot, t), 1);
+    assert.equal(thumpFundamental(shot, shot.dur), 0);
+    assert.equal(thumpHarmonic(shot, shot.dur), 0);
     const sampled = sampleThump(shot, 31);
     assert.equal(sampled.freq[0], 120);
     assert.equal(sampled.fund[0], 0);

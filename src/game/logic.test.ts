@@ -379,7 +379,7 @@ describe('simulation', () => {
     }
   });
 
-  it('keeps a shield until a hit, ignores a second one, and clears it on restart', () => {
+  it('keeps one active shield, banks another pickup, and clears it on restart', () => {
     const state = playing();
     state.ammoCooldown = 999;
     state.powerCooldown = 999;
@@ -401,12 +401,21 @@ describe('simulation', () => {
     for (let i = 0; i < 140; i += 1) step(state, idleIntent(), 0.05);
     assert.equal(state.shieldHits, 1);
     assert.equal(state.lives, 3);
-    state.inventory = ['shield'];
     state.pickups.push({ id: 40, kind: 'shield', amount: 0, x: state.shipX, y: state.shipY, vy: 0, r: 16, spin: 0 });
+    step(state, idleIntent(), 0.016);
+    assert.equal(state.shieldHits, 1);
+    assert.deepEqual(state.inventory, ['shield']);
+    assert.equal(state.pickups.length, 0);
     step(state, idleIntent({ activateSlot: 0 }), 0.016);
     assert.equal(state.shieldHits, 1);
     assert.deepEqual(state.inventory, ['shield']);
+    state.inventory = ['rapid', 'bomb', 'laser'];
+    state.pickups.push({ id: 41, kind: 'shield', amount: 0, x: state.shipX, y: state.shipY, vy: 0, r: 16, spin: 0 });
+    step(state, idleIntent(), 0.016);
     assert.equal(state.pickups.length, 1);
+    assert.deepEqual(state.inventory, ['rapid', 'bomb', 'laser']);
+    state.pickups = [];
+    state.inventory = ['shield'];
     block();
     arm();
     block();
@@ -427,8 +436,11 @@ describe('simulation', () => {
     campaign.introTimer = 99;
     campaign.inventory = ['shield'];
     step(campaign, idleIntent({ activateSlot: 0 }), 0.016);
-    for (let i = 0; i < 40; i += 1) step(campaign, idleIntent(), 0.05);
+    campaign.pickups.push({ id: 42, kind: 'shield', amount: 0, x: campaign.shipX, y: campaign.shipY, vy: 0, r: 16, spin: 0 });
+    step(campaign, idleIntent(), 0.016);
     assert.equal(campaign.shieldHits, 1);
+    assert.deepEqual(campaign.inventory, ['shield']);
+    assert.equal(campaign.pickups.length, 0);
     assert.equal(campaign.lives, 3);
   });
 
